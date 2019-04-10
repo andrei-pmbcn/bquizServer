@@ -1,0 +1,6 @@
+wsshost: localhost #websocket server host
+wssport: 8090 #websocket server port
+dbhost: localhost #database host
+dbuser: quiz #database username
+dbpassword: testpass #database password
+database: quiz #database name

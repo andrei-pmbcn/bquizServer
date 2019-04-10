@@ -1,0 +1,29 @@
+{
+  "name": "bquizserver",
+  "version": "0.0.1",
+  "description": "server for the bible quiz plugin",
+  "main": "server.js",
+  "scripts": {
+    "test": "mocha \"test/*.spec.js\" --file \"test/setup.js\""
+  },
+  "keywords": [
+    "bible",
+    "quiz",
+    "server"
+  ],
+  "author": "Andrei Pambuccian",
+  "license": "ISC",
+  "dependencies": {
+    "bcrypt-nodejs": "0.0.3",
+    "dateformat": "^3.0.3",
+    "js-yaml": "^3.13.1",
+    "knex": "^0.16.3",
+    "mocha": "^6.1.2",
+    "mysql": "^2.16.0",
+    "ws": "^6.2.1"
+  },
+  "devDependencies": {
+    "chai": "^4.2.0",
+    "sinon": "^7.3.1"
+  }
+}
