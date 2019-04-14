@@ -4,7 +4,7 @@
   "description": "server for the bible quiz plugin",
   "main": "server.js",
   "scripts": {
-    "test": "mocha \"test/*.spec.js\" --file \"test/setup.js\""
+    "test": "mocha test/suite.js"
   },
   "keywords": [
     "bible",

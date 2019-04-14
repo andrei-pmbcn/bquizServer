@@ -1,0 +1,7 @@
+apimodule: ./biblequiz.js # the path of the file that contains the api functions
+
+# websocket server settings
+wsshost: localhost #websocket server host
+wssport: 8090 #websocket server port
+throttleTime: 100 #the minimum interval (in milliseconds) between two messages
+
