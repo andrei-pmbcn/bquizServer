@@ -1,16 +1,3 @@
-//[TODO] User could login in the middle of a game, account for this
-//[TODO] Likewise, user could login, logout then log back in under a different
-//  name at any point in the game
-//[TODO] Ratings after the quiz is over
-//[TODO] doesAdvanceTogether = false
-//[TODO] isTimePerQuestion = false
-//[TODO] incorporate xmpp
-//[TODO] Only remove the player objects of non-logged-in players that
-//    disconnect during the prep or ready phase, not the active or finished
-//    phase, so that their results are saved and shown correctly after the game
-//[TODO] expansion: observers
-//[TODO] internationalization, put locale settings in each quiz instance
-
 const WebSocket = require('ws');
 const yaml = require('js-yaml');
 const fs = require('fs');
@@ -124,20 +111,40 @@ class WebsocketConnection {
 		var response = {
 			type: "welcome",
 			phase: this.qinst.phase,
+			players: this.qinst.players,
+			settings: this.qinst.quiz.settings,
 		};
 
-		if (this.qinst.phase === wss.QINST_PHASE_PREP) {
-			response.players = this.qinst.players;
-		} else if (this.qinst.phase === wss.QINST_PHASE_ACTIVE) {
-			//[TODO]
+		if (this.qinst.phase === wss.QINST_PHASE_ACTIVE) {
+			if (this === this.qinst.hostConn
+					&& !this.qinst.quiz.settings.doesHostPlay) {
+				var question;
+				if (this.qinst.quiz.settings.doesAdvanceTogether) {
+					question = this.qinst.quiz.questions.find(
+						(x) => (x.index === this.qinst.questionIndex));
+				} else {
+					question = this.qinst.quiz.questions.find(
+						(x) => (x.index === this.player.questionIndex));
+				}
+				response.correctAnswer = question.correctAnswer;
+				response.commentary = question.commentary;
+			} else {
+				response.correctAnswer = null;
+				response.commentary = null;
+			}
+
+			var preparedQuestion;
+			if (this.qinst.quiz.settings.doesAdvanceTogether) {
+				preparedQuestion = this.qinst.preparedQuestions.find(
+					(x) => (x.index === this.qinst.questionIndex));
+			} else {
+				preparedQuestion = this.qinst.preparedQuestions.find(
+					(x) => (x.index === this.player.questionIndex));
+			}
+			response.question = preparedQuestion;
+
 		} else if (this.qinst.phase === wss.QINST_PHASE_FINISHED) {
 			//[TODO]
-		} else if (this.qinst.phase === wss.QINST_PHASE_READY) {
-			this.sendError('InvalidQinstState',
-				'Ați încercat să intrați în joc după perioada acestuia '
-				+ 'de pornire. Aceasta pare a fi o eroare; vă rugăm să '
-				+ 'contactați administratorul site-ului.');
-			return;
 		}
 
 		this.ws.send(JSON.stringify(response));	
@@ -315,6 +322,33 @@ class WebsocketConnection {
 		}));
 	}
 
+	sendPlayerResults() {
+		if (this.ws.readyState !== this.ws.OPEN) {
+			return;
+		}
+
+		this.ws.send(JSON.stringify({
+			type: "playerResults",
+			questions: this.qinst.quiz.questions,
+			answers: this.player.answers,
+		}));
+	}
+
+	sendQinstEnd() {
+		if (this.ws.readyState !== this.ws.OPEN) {
+			return;
+		}
+		var results = {
+			nickname: this.player.nickname,
+			answers: this.player.answers,
+		}
+		this.ws.send(JSON.stringify({
+			type: "qinstEnd",
+			questions: this.qinst.quiz.questions,
+			results: results,
+		}));
+	}
+
 	sendError(errtype, errmsg, isLogged = true, doesDisplay = true) {
 		var date = new Date();
 		errmsg = dateformat(date, "hh:MM:ss") + ": " + errtype + " - "
@@ -424,6 +458,14 @@ class WebsocketConnection {
 		// get the quiz instance from the message's code
 		this.qinst = wss.qinsts[msg.code];
 
+		if (this.qinst === undefined) {
+			// the quiz instance does not exist
+			this.sendError('QuizInstanceNotFound',
+				'Nu am putut găsi jocul cu codul specificat de dumneavoastră.'
+			)
+			return;
+		}
+
 		var quiz = this.qinst.quiz;
 
 		this.player = {
@@ -431,6 +473,7 @@ class WebsocketConnection {
 			nickname: null,
 			isReady: false,
 			hasAnswered: false,
+			hasFinished: false,
 			timeout: null,
 			currentQuestion: quiz.settings.doesAdvanceTogether ? null : 1,
 			finishTime: null,
@@ -455,7 +498,7 @@ class WebsocketConnection {
 		var isReconnect = false;
 		if (this.player.username !== null) {
 			var playersWithUsername = this.qinst.players.filter(
-				(x)=>(x.username == this.player.username));
+				(x) => (x.username == this.player.username));
 			if (playersWithUsername.length) {
 				this.player = playersWithUsername[0];
 				isReconnect = true;
@@ -468,6 +511,10 @@ class WebsocketConnection {
 					this.player.nickname + " s-a reconectat");
 			}
 			this.qinst.conns.push(this);
+
+			if (this.player.nickname === this.qinst.hostNickname) {
+				this.qinst.hostConn = this;
+			}
 
 			// send the appropriate reconnection message
 			this.sendWelcome();
@@ -768,7 +815,7 @@ class WebsocketConnection {
 			answer: msg.answer,
 		});
 
-		if (!quiz.settings.doesHostPlay) {
+		if (!quiz.settings.doesHostPlay && this.qinst.hostConn !== null) {
 			this.qinst.hostConn.sendAnswerNotice(this, msg);
 		}
 
@@ -779,7 +826,11 @@ class WebsocketConnection {
 			this.player.hasAnswered = true;
 			this.sendAnswerFeedback();
 		} else {
-			this.nextQuestionForPlayer();
+			if (this.player.questionIndex < this.qinst.quiz.questions.length) {
+				this.nextQuestionForPlayer();
+			} else {
+				this.endQinstForPlayer();
+			}
 		}
 	}
 
@@ -789,6 +840,20 @@ class WebsocketConnection {
 				'Ați încercat să continuați cu următoarea întrebare '
 				+ 'deși nu sunteți organizatorul jocului. Aceasta pare a fi '
 				+ 'o eroare; vă rugăm să contactați administratorul site-ului.'
+			);
+			return;
+		}
+		
+		if (this.qinst.phase !== wss.QINST_PHASE_ACTIVE) {
+			// the error is not visible because the host could be sending the
+			// request between the moment when the final question's time has
+			// expired (and thus the quiz instance has entered the finished
+			// phase) and the moment when the host has received the qinstEnd
+			// message from the server
+			this.sendError('NextQuestionWrongPhase',
+				'Ați încercat să anunțați că sunteți pregătit într-o fază a '
+				+ 'jocului în care acest lucru nu e posibil. ',
+				false, false
 			);
 			return;
 		}
@@ -808,8 +873,10 @@ class WebsocketConnection {
 
 		if (quiz.settings.doesAdvanceTogether) {
 			// check that all players have submitted their answers
-			for (let player of this.qinst.players) {
-				if (!player.hasAnswered) {
+			for (let conn of this.qinst.conns) {
+				if ((conn !== this.qinst.hostConn
+					|| this.qinst.quiz.settings.doesHostPlay)
+					&& !conn.player.hasAnswered) {
 					this.sendError('NextQuestionNotAllReady',
 						'Ați încercat să continuați cu următoarea întrebare '
 						+ 'deși nu toți jucătorii au dat răspunsurile lor. '
@@ -819,7 +886,11 @@ class WebsocketConnection {
 				}
 			}
 
-			this.nextQuestionForAll();
+			if (this.qinst.questionIndex < this.qinst.quiz.questions.length) {
+				this.nextQuestionForAll();
+			} else {
+				this.endQinstForAll();
+			}
 
 		} else {
 			this.sendError('NextQuestionUnavailable',
@@ -859,7 +930,7 @@ class WebsocketConnection {
 		if (!quiz.settings.doesAdvanceTogether || question.time === null) {
 			delta = quiz.settings.time;
 		} else {
-			delta = parseInt(question.time * 1000);
+			delta = parseInt(question.time);
 		}
 
 		var finishTime = new Date();
@@ -870,9 +941,11 @@ class WebsocketConnection {
 			clearTimeout(this.qinst.timeout);
 			this.qinst.finishTime = finishTime;
 			if (questionIndex < quiz.questions.length) {
-				this.qinst.timeout = setTimeout(this.nextQuestionForAll, delta);
+				this.qinst.timeout = setTimeout(
+					this.nextQuestionForAll.bind(this), delta * 1000);
 			} else {
-				this.qinst.timeout = setTimeout(this.qinstEndForAll, delta);
+				this.qinst.timeout = setTimeout(
+					this.endQinstForAll.bind(this), delta * 1000);
 			}
 		} else {
 			clearTimeout(this.player.timeout);
@@ -880,9 +953,10 @@ class WebsocketConnection {
 			if (!quiz.settings.isTimePerQuestion
 					|| questionIndex < quiz.questions.length) {
 				this.player.timeout = setTimeout(
-					this.nextQuestionForPlayer, delta);
+					this.nextQuestionForPlayer.bind(this), delta * 1000);
 			} else {
-				this.player.timeout = setTimeout(this.qinstEndForPlayer, delta);
+				this.player.timeout = setTimeout(
+					this.endQinstForPlayer.bind(this), delta * 1000);
 			}
 		}
 
@@ -896,7 +970,7 @@ class WebsocketConnection {
 		for (let conn of this.qinst.conns) {
 			conn.sendQuestion(question, finishTime);
 
-			if (this.qinst.quiz.settings.isHostPlaying ||
+			if (this.qinst.quiz.settings.doesHostPlay ||
 					!(this.qinst.hostConn === conn)) {
 				conn.player.hasAnswered = false;
 			}
@@ -911,14 +985,68 @@ class WebsocketConnection {
 		this.sendQuestion(question, finishTime);
 	}
 
-	qinstEndForAll() {
+	endQinstForAll() {
+		if (this.qinst.phase === wss.QINST_PHASE_ACTIVE) {
+			this.qinst.phase = wss.QINST_PHASE_FINISHED;
 
-
+			for (let conn of this.qinst.conns) {
+				conn.sendQinstEnd();
+			}
+		} else {
+			this.sendError('QinstAlreadyEnded',
+				'Ați încercat să încheiați jocul deși acesta era deja '
+				+ 'finalizat.', false, false)
+			return;
+		}
 	}
 
-	qinstEndForPlayer() {
+	endQinstForPlayer() {
+		if (!this.player.hasFinished) {
+			this.player.hasFinished = true;
 
+			nPlayersFinished = this.qinst.players.filter(
+				(x) => (x.hasFinished)).length;
+			if (nPlayersFinished === this.qinst.players.length) {
+				this.endQinstForAll();
+			}
+			
+			this.sendPlayerResults();
+		} else {
+			this.sendError('PlayerAlreadyFinished',
+				'Ați încercat să încheiați jocul deși acesta era deja '
+				+ 'finalizat pentru dumneavoastră.', false, false)
+			return;
+		}
+	}
 
+	//TODO send this to the client
+	calcTotal(player, doesCalcScore) {
+		var questions = this.qinst.quiz.questions;
+
+		questions = questions.sort((x,y) => (x.index - y.index));
+		answers = player.answers.sort((x, y) => (x.index - y.index));
+
+		var total = 0;
+		for (let i = 0; i < questions.length; i++) {
+			let correctAnswer = questions[i].correctAnswer;
+			let nCorrectSubAnswers = 0;
+			if (answers[i].length === correctAnswer.length) {
+				for (subAnswer of answers[i]) {
+					if (correctAnswer.indexOf(subAnswer) !== -1) {
+						nCorrectSubAnswers++;
+					}
+				}
+				if (nCorrectSubAnswers === correctAnswer.length) {
+					if (doesCalcScore) {
+						total += questions[i].score;
+					} else {
+						total++;
+					}
+				}
+			}
+		}
+
+		return total;
 	}
 
 	/*** validation methods ***/
@@ -1206,9 +1334,8 @@ wss.on('connection', function (ws) {
 				// the leave was under normal conditions
 
 				if (conn.qinst.hostNickname === conn.player.nickname) {
+					// place the game in hostless mode
 					conn.qinst.hostConn = null;
-					// enabled hostless mode, used in the active phase,
-					// by setting hostNickname to null
 					conn.qinst.hostNickname = null;
 
 					// if the game is in the prep phase, notify all players that
@@ -1227,6 +1354,15 @@ wss.on('connection', function (ws) {
 									+ " a fost scos din joc");
 							}
 						}
+					} else {
+						// send the remaining players a notice that the host
+						// has left
+						for (let otherConn of conn.qinst.conns) {
+							otherConn.sendPlayerLeft(conn.player.nickname,
+								reason, false);
+						}
+						conn.qinst.players.splice(
+							conn.qinst.players.indexOf(conn.player), 1);
 					}
 				} else {
 					// if the player is not the host, simply notify the
@@ -1235,7 +1371,6 @@ wss.on('connection', function (ws) {
 						otherConn.sendPlayerLeft(conn.player.nickname,
 							reason, false);
 					}
-
 					conn.qinst.players.splice(
 						conn.qinst.players.indexOf(conn.player), 1);
 				}
@@ -1252,6 +1387,12 @@ wss.on('connection', function (ws) {
 					conn.qinst.players.splice(
 						conn.qinst.players.indexOf(conn.player), 1);
 				} else {
+					// if the player was the host, place the game temporarily
+					// in hostless mode
+					if (conn.player.nickname === conn.qinst.hostNickname) {
+						conn.qinst.hostConn = null;
+					}
+
 					// turn off the player's ready status if possible
 					if ([wss.QINST_PHASE_PREP, wss.QINST_PHASE_ACTIVE]
 							.indexOf(conn.qinst.phase) !== -1) {

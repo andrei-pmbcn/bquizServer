@@ -13,6 +13,7 @@ module.exports = function() {
 				this.ws1.once('message', function(msg) {
 					msg = JSON.parse(msg);
 					this.code = msg.code;
+					this.qinst = wss.qinsts[this.code];
 					done();
 				}.bind(this));
 
@@ -41,16 +42,50 @@ module.exports = function() {
 		wss.doesThrottle = true;
 	});
 
-	function addAllPlayers(callback) {
+	var sendJoin1 = function() {
+		this.ws1.send(JSON.stringify({
+			type:'join',
+			code: this.code,
+			username: 'user1',
+			password: 'pass1',
+			nickname: 'nick1',
+		}));
+	};
+
+	var sendJoin2 = function() {
+		this.ws2.send(JSON.stringify({
+			type:'join',
+			code: this.code,
+			username: 'user2',
+			password: 'pass2',
+			nickname: 'nick2',
+		}));
+	}
+
+	var sendJoin3 = function() {
+		this.ws3.send(JSON.stringify({
+			type:'join',
+			code: this.code,
+			username: 'user3',
+			password: 'pass3',
+			nickname: 'nick3',
+		}));
+	}
+
+	function addAllPlayers(cb) {
 		this.ws1.once('message', function (msg) {
 			msg = JSON.parse(msg);
 			expect(msg.type).to.equal('welcome');
+			this.conn1 = wss.conns.find(
+				(x) => (x.player.nickname === 'nick1'));;
 
 			this.ws2.once('message', function (msg) {
 				msg = JSON.parse(msg);
 				expect(msg.type).to.equal('welcome');
-
-				callback();
+				this.conn2 = wss.conns.find(
+					(x) => (x.player.nickname === 'nick2'));
+	
+				cb();
 			}.bind(this));
 
 			sendJoin2.bind(this)();
@@ -59,14 +94,14 @@ module.exports = function() {
 		sendJoin1.bind(this)();
 	}
 
-	function addAllPlayersAndMessage(sender, callback, message, receiver) {
+	function addAllPlayersAndMessage(sender, cb, message, receiver) {
 		if (!receiver) {
 			receiver = sender;
 		}
 		var sendMessageAndRespond = function() {
 			receiver.once('message', function(msg) {
 				msg = JSON.parse(msg);
-				callback.bind(this)(msg);
+				cb.bind(this)(msg);
 			}.bind(this));
 
 			sender.send(JSON.stringify(message));
@@ -75,9 +110,7 @@ module.exports = function() {
 		addAllPlayers.bind(this)(sendMessageAndRespond);
 	}
 
-
-
-	describe("players reconnecting", function() {
+	describe("players reconnecting in the prep phase", function() {
 		it("sends the welcome message if the player is logged in "
 				+ "and does not specify a nickname when reconnecting",
 				function(done) {
@@ -97,10 +130,12 @@ module.exports = function() {
 							expect(msg.type).to.equal('welcome');
 							expect(msg.phase).to.equal(wss.QINST_PHASE_PREP);
 							expect(msg.players).to.have.lengthOf(2);
+							expect(msg.settings)
+								.to.deep.equal(this.qinst.quiz.settings);
 							ws.close(1000);
 
 							done();
-						});
+						}.bind(this));
 
 						ws.send(JSON.stringify({
 							type:'join',
@@ -136,10 +171,12 @@ module.exports = function() {
 							expect(msg.type).to.equal('welcome');
 							expect(msg.phase).to.equal(wss.QINST_PHASE_PREP);
 							expect(msg.players).to.have.lengthOf(2);
-							ws.close();
+							expect(msg.settings)
+								.to.deep.equal(this.qinst.quiz.settings);
+							ws.close(1000);
 
 							done();
-						});
+						}.bind(this));
 
 						ws.send(JSON.stringify({
 							type: 'join',
@@ -177,7 +214,7 @@ module.exports = function() {
 							ws.close(1000);
 
 							done();
-						});
+						}.bind(this));
 
 						ws.send(JSON.stringify({
 							type:'join',
@@ -191,6 +228,41 @@ module.exports = function() {
 			}.bind(this));
 
 			sendJoin1.bind(this)();
+		});
+
+		it("gives the player the status of host if the player was the "
+				+ "host before reconnecting", function(done) {
+			var cb1 = function() {
+				var cb2 = function(ws) {
+					ws.once('message', function(msg) {
+						msg = JSON.parse(msg);
+						expect(msg.type).to.equal('welcome');
+
+						var conn = wss.conns.find(
+							(x) => (x.player.nickname === 'nick1'));
+
+						expect(conn).to.equal(this.qinst.hostConn);
+						expect(this.qinst.hostNickname).to.equal('nick1');
+						ws.close(1000);
+						done();
+					}.bind(this));
+
+					ws.send(JSON.stringify({
+						type: 'join',
+						code: this.code,
+						username: 'user1',
+						password: 'pass1',
+					}));
+				}.bind(this);
+
+				wss.once('connClosed', function() {
+					createWebsocket(cb2);
+				});
+
+				this.ws1.close(1001);		
+			}.bind(this);
+
+			addAllPlayers.bind(this)(cb1);
 		});
 	});
 
@@ -325,6 +397,27 @@ module.exports = function() {
 			}));
 		});
 
+		it("sends an error message on attempting to join when the code "
+				+ "does not match any of the server's quiz instances"
+				, function(done) {
+			this.ws1.once('message', function(msg) {
+				msg = JSON.parse(msg);
+				expect(msg.type).to.equal('error');
+				expect(msg.errtype).to.equal('QuizInstanceNotFound');
+	
+				done();
+			});
+
+			this.ws1.send(JSON.stringify({
+				type: 'join',
+				code: 1,
+				username: 'user1',
+				password: 'pass1',
+				nickname: 'nick1',
+			}));
+
+		});
+
 		it("does not allow joining without a nickname", function(done) {
 			var ws1 = this.ws1;
 
@@ -349,7 +442,7 @@ module.exports = function() {
 				msg = JSON.parse(msg);
 				expect(msg.type).to.equal('welcome');
 				
-				var player = wss.qinsts[this.code].players.find(
+				var player = this.qinst.players.find(
 					(x)=>(x.username == 'user1'));
 				
 				expect(player.nickname).to.equal('nick1');
@@ -370,7 +463,7 @@ module.exports = function() {
 				this.ws2.once('message', (function(msg) {
 					msg = JSON.parse(msg);
 					expect(msg.type).to.equal('welcome');
-					var player = wss.qinsts[this.code].players.find(
+					var player = this.qinst.players.find(
 						(x)=>(x.username == 'user2'));
 					
 					expect(player.nickname).to.equal('nick2');
@@ -428,14 +521,13 @@ module.exports = function() {
 
 		it("closes the websocket connection when a player leaves",
 				function(done) {
-			var qinst = wss.qinsts[this.code];
 			this.ws1.once('message', function() {
 				sendJoin2.bind(this)();
 			}.bind(this));
 
 			this.ws2.once('message', function(msg) {
 				expect(wss.conns).to.have.lengthOf(2);
-				expect(qinst.conns).to.have.lengthOf(2);
+				expect(this.qinst.conns).to.have.lengthOf(2);
 				this.ws2.send(JSON.stringify({
 					type: 'leave',
 				}))
@@ -443,7 +535,7 @@ module.exports = function() {
 
 			wss.once('connClosed', function() {
 				expect(wss.conns).to.have.lengthOf(1); // from this.ws2
-				expect(qinst.conns).to.have.lengthOf(1);
+				expect(this.qinst.conns).to.have.lengthOf(1);
 				done();
 			}.bind(this));
 
@@ -505,9 +597,9 @@ module.exports = function() {
 					var checkQinstNotDeleted = function() {
 						msg = JSON.parse(msg);
 						expect(wss.qinsts).to.have.property(this.code);
-						expect(wss.qinsts[this.code].conns)
+						expect(this.qinst.conns)
 							.to.have.lengthOf(1);
-						expect(wss.qinsts[this.code].players)
+						expect(this.qinst.players)
 							.to.have.lengthOf(2);
 						done();
 					}.bind(this);
@@ -535,9 +627,9 @@ module.exports = function() {
 				this.ws2.on('close', function(msg) {
 					var checkQinstNotDeleted = function() {
 						expect(wss.qinsts).to.have.property(this.code);
-						expect(wss.qinsts[this.code].conns)
+						expect(this.qinst.conns)
 							.to.have.lengthOf(1);
-						expect(wss.qinsts[this.code].players)
+						expect(this.qinst.players)
 							.to.have.lengthOf(1);
 						done();
 					}.bind(this);
@@ -561,10 +653,9 @@ module.exports = function() {
 				}.bind(this));
 
 				this.ws2.once('close', function() {
-					var qinst = wss.qinsts[this.code];
-					expect(qinst.players).to.have.lengthOf(1);
-					expect(qinst.conns).to.have.lengthOf(1);
-					expect(qinst.players[0].nickname).to.equal('nick1');
+					expect(this.qinst.players).to.have.lengthOf(1);
+					expect(this.qinst.conns).to.have.lengthOf(1);
+					expect(this.qinst.players[0].nickname).to.equal('nick1');
 					done();
 				}.bind(this));
 
@@ -586,10 +677,10 @@ module.exports = function() {
 					this.ws1.once('message', function(msg) {
 						msg = JSON.parse(msg);
 						expect(msg.type).to.equal('playerLeft');
-						var qinst = wss.qinsts[this.code];
-						expect(qinst.players).to.have.lengthOf(1);
-						expect(qinst.conns).to.have.lengthOf(1);
-						expect(qinst.players[0].nickname).to.equal('nick1');
+						expect(this.qinst.players).to.have.lengthOf(1);
+						expect(this.qinst.conns).to.have.lengthOf(1);
+						expect(this.qinst.players[0].nickname)
+							.to.equal('nick1');
 						done();
 					}.bind(this));
 
@@ -618,9 +709,8 @@ module.exports = function() {
 					this.ws1.once('message', function(msg) {
 						msg = JSON.parse(msg);
 						expect(msg.type).to.equal('playerLeft');
-						var qinst = wss.qinsts[this.code];
-						expect(qinst.players).to.have.lengthOf(2);
-						expect(qinst.conns).to.have.lengthOf(1);
+						expect(this.qinst.players).to.have.lengthOf(2);
+						expect(this.qinst.conns).to.have.lengthOf(1);
 
 						done();
 					}.bind(this));
@@ -642,7 +732,7 @@ module.exports = function() {
 
 		it("informs the other player when a player leaves via a leave "
 				+ "message", function(done) {
-			var callback = function() {
+			var cb = function() {
 				this.ws1.once('message', function(msg) {
 					msg = JSON.parse(msg);
 					expect(msg.type).to.equal('playerLeft');
@@ -655,12 +745,12 @@ module.exports = function() {
 				this.ws2.send(JSON.stringify({type: 'leave'}));
 			}.bind(this);
 
-			addAllPlayers.bind(this)(callback);
+			addAllPlayers.bind(this)(cb);
 		});
 
 		it("informs the other player when a player disconnects",
 				function(done) {
-			var callback = function() {
+			var cb = function() {
 				this.ws1.once('message', function(msg) {
 					msg = JSON.parse(msg);
 					expect(msg.type).to.equal('playerLeft');
@@ -673,15 +763,15 @@ module.exports = function() {
 				this.ws2.close(1001);
 			}.bind(this);
 
-			addAllPlayers.bind(this)(callback);
+			addAllPlayers.bind(this)(cb);
 		});
 	});
 
 	describe("players setting and unsetting their ready state", function() {
 		it("turns on the player's ready state when requested",
 				function (done) {
-			var callback = function() {
-				var players = wss.qinsts[this.code].players;
+			var cb = function() {
+				var players = this.qinst.players;
 				var player = players.find((x) => (x.nickname == 'nick1'));
 
 				this.ws1.once('message', function(msg) {
@@ -697,13 +787,13 @@ module.exports = function() {
 				this.ws1.send(JSON.stringify({type: 'ready'}));
 			}.bind(this);
 
-			addAllPlayers.bind(this)(callback);
+			addAllPlayers.bind(this)(cb);
 		});
 
 		it("does not turn on the player's ready state if it is already "
 				+ "turned on", function(done) {
-			var callback = function() {
-				var players = wss.qinsts[this.code].players;
+			var cb = function() {
+				var players = this.qinst.players;
 				var player = players.find((x) => (x.nickname == 'nick1'));
 				player.isReady = true;
 
@@ -718,13 +808,13 @@ module.exports = function() {
 				this.ws1.send(JSON.stringify({type: 'ready'}));
 			}.bind(this);
 			
-			addAllPlayers.bind(this)(callback);
+			addAllPlayers.bind(this)(cb);
 		});
 
 		it("turns off the player's ready state when requested",
 				function(done) {
-			var callback = function() {
-				var players = wss.qinsts[this.code].players;
+			var cb = function() {
+				var players = this.qinst.players;
 				var player = players.find((x) => (x.nickname == 'nick1'));
 				player.isReady = true;
 
@@ -741,13 +831,13 @@ module.exports = function() {
 				this.ws1.send(JSON.stringify({type: 'notReady'}));
 			}.bind(this);
 
-			addAllPlayers.bind(this)(callback);
+			addAllPlayers.bind(this)(cb);
 		});
 
 		it("turns off the player's ready state and notifies the other "
 				+ "players when the player disconnects", function (done) {
-			var callback = function() {
-				var players = wss.qinsts[this.code].players;
+			var cb = function() {
+				var players = this.qinst.players;
 				var player = players.find((x) => (x.nickname == 'nick2'));
 				player.isReady = true;
 
@@ -764,12 +854,12 @@ module.exports = function() {
 				}.bind(this))
 			}.bind(this);
 			
-			addAllPlayers.bind(this)(callback);
+			addAllPlayers.bind(this)(cb);
 		});
 
 		it("does not turn off the player's ready state if it is already "
 				+ "turned off", function(done) {
-			var callback = function() {
+			var cb = function() {
 				this.ws1.once('message', function(msg) {
 					msg = JSON.parse(msg);
 					expect(msg.type).to.equal('error');
@@ -781,15 +871,15 @@ module.exports = function() {
 				this.ws1.send(JSON.stringify({type: 'notReady'}));
 			}.bind(this);
 			
-			addAllPlayers.bind(this)(callback);
+			addAllPlayers.bind(this)(cb);
 		});
 
 		var runReadyWrongPhaseTest = function(phase, isTestingReady, done) {
-			var callback = function() {
-				var players = wss.qinsts[this.code].players;
+			var cb = function() {
+				var players = this.qinst.players;
 				var player = players.find((x) => (x.nickname == 'nick2'));
 				player.isReady = isTestingReady ? false : true;
-				wss.qinsts[this.code].phase = phase;
+				this.qinst.phase = phase;
 
 				this.ws2.once('message', function (msg) {
 					msg = JSON.parse(msg);
@@ -808,7 +898,7 @@ module.exports = function() {
 
 			}.bind(this);
 
-			addAllPlayers.bind(this)(callback);
+			addAllPlayers.bind(this)(cb);
 
 		}
 
@@ -856,7 +946,7 @@ module.exports = function() {
 
 		it("notifies the other players when the player sends ready",
 				function(done) {
-			var callback = function() {
+			var cb = function() {
 				this.ws2.once('message', function(msg) {
 					msg = JSON.parse(msg);
 
@@ -869,13 +959,13 @@ module.exports = function() {
 				this.ws1.send(JSON.stringify({type: 'ready'}))
 			}.bind(this);
 
-			addAllPlayers.bind(this)(callback);
+			addAllPlayers.bind(this)(cb);
 		});
 
 		it("notifies the other players when the player sends notReady",
 				function(done) {
-			var callback = function() {
-				var players = wss.qinsts[this.code].players;
+			var cb = function() {
+				var players = this.qinst.players;
 				var player = players.find((x) => (x.nickname == 'nick1'));
 				player.isReady = true;
 
@@ -890,20 +980,20 @@ module.exports = function() {
 				this.ws1.send(JSON.stringify({type: 'notReady'}));
 			}.bind(this);
 
-			addAllPlayers.bind(this)(callback);
+			addAllPlayers.bind(this)(cb);
 		});
 	});
 
 	describe("booting players", function() {
 		it("does not boot the target player if the player requesting the "
 				+ "boot is not the host", function(done) {
-			var callback = function(msg) {
+			var cb = function(msg) {
 				expect(msg.type).to.equal('error');
 				expect(msg.errtype).to.equal('UnauthorizedBoot');
 				done();
 			}.bind(this);
 
-			addAllPlayersAndMessage.bind(this)(this.ws2, callback, {
+			addAllPlayersAndMessage.bind(this)(this.ws2, cb, {
 				type: 'boot',
 				nickname: 'nick1',
 			});
@@ -911,14 +1001,14 @@ module.exports = function() {
 
 		it("boots the target player if the player requesting the "
 				+ "boot is the host", function(done) {
-			var callback = function(msg) {
-				var conns = wss.qinsts[this.code].conns;
+			var cb = function(msg) {
+				var conns = this.qinst.conns;
 				expect(conns).to.have.lengthOf(1);
 				expect(conns[0].player.nickname).to.equal('nick1');
 				done();
 			}.bind(this);
 
-			addAllPlayersAndMessage.bind(this)(this.ws1, callback, {
+			addAllPlayersAndMessage.bind(this)(this.ws1, cb, {
 				type: 'boot',
 				nickname: 'nick2',
 			});
@@ -926,26 +1016,26 @@ module.exports = function() {
 
 		it("sends an error message if the target player's nickname cannot "
 			+ "be found", function (done) {
-			var callback = function(msg) {
+			var cb = function(msg) {
 				expect(msg.type).to.equal('error');
 				expect(msg.errtype).to.equal('CannotFindBootTarget');
 				done();
 			}.bind(this);
 
-			addAllPlayersAndMessage.bind(this)(this.ws1, callback, {
+			addAllPlayersAndMessage.bind(this)(this.ws1, cb, {
 				type: 'boot',
 				nickname: 'nick0',
 			});
 		});
 
 		it("does not allow the host to boot themselves", function(done) {
-			var callback = function(msg) {
+			var cb = function(msg) {
 				expect(msg.type).to.equal('error');
 				expect(msg.errtype).to.equal('SelfBoot');
 				done();
 			}.bind(this);
 
-			addAllPlayersAndMessage.bind(this)(this.ws1, callback, {
+			addAllPlayersAndMessage.bind(this)(this.ws1, cb, {
 				type: 'boot',
 				nickname: 'nick1',
 			});
@@ -953,12 +1043,12 @@ module.exports = function() {
 
 		it("sends a message to the booted player before disconnecting "
 				+ "them", function (done) {
-			var callback = function(msg) {
+			var cb = function(msg) {
 				expect(msg.type).to.equal('connectionClosed');
 				done();
 			}.bind(this);
 
-			addAllPlayersAndMessage.bind(this)(this.ws1, callback, {
+			addAllPlayersAndMessage.bind(this)(this.ws1, cb, {
 					type: 'boot',
 					nickname: 'nick2',
 				},
@@ -967,13 +1057,13 @@ module.exports = function() {
 	
 		it("informs the other players if a player has been booted",
 				function(done) {
-			var callback = function(msg) {
+			var cb = function(msg) {
 				expect(msg.type).to.equal('playerLeft');
 				expect(msg.nickname).to.equal('nick2');
 				done();
 			}.bind(this);
 
-			addAllPlayersAndMessage.bind(this)(this.ws1, callback, {
+			addAllPlayersAndMessage.bind(this)(this.ws1, cb, {
 				type: 'boot',
 				nickname: 'nick2',
 			});
@@ -982,7 +1072,7 @@ module.exports = function() {
 
 
 	describe("players attempting to start the game", function() {
-		function prep(sender, callback, message, receiver, allReady = true) {
+		function prep(sender, cb, message, receiver, allReady = true) {
 			if (!receiver) {
 				receiver = sender;
 			}
@@ -990,10 +1080,10 @@ module.exports = function() {
 				receiver.once('message', function(msg) {
 					msg = JSON.parse(msg);
 
-					callback.bind(this)(msg);
+					cb.bind(this)(msg);
 				}.bind(this));
 
-				for(var player of wss.qinsts[this.code].players) {
+				for(var player of this.qinst.players) {
 					player.isReady = true;
 				}
 				if (!allReady) {
@@ -1008,30 +1098,30 @@ module.exports = function() {
 
 		it("sends an error message if anyone other than the game host attempts"
 				+ "to start the game", function(done) {
-			var callback = function(msg) {
+			var cb = function(msg) {
 				expect(msg.type).to.equal('error');
 				expect(msg.errtype).to.equal('UnauthorizedStart');
-				expect(wss.qinsts[this.code].phase)
+				expect(this.qinst.phase)
 					.to.equal(wss.QINST_PHASE_PREP);
 				done();
 			}.bind(this);
 
-			prep.bind(this)(this.ws2, callback, {
+			prep.bind(this)(this.ws2, cb, {
 				type: 'start',
 			});
 		});
 
 		it("sends the host an error message if the host attempts to start "
 				+ "the game without all players being ready", function(done) {
-			var callback = function(msg) {
+			var cb = function(msg) {
 				expect(msg.type).to.equal('error');
 				expect(msg.errtype).to.equal('StartNotAllReady');
-				expect(wss.qinsts[this.code].phase)
+				expect(this.qinst.phase)
 					.to.equal(wss.QINST_PHASE_PREP);
 				done();
 			}.bind(this);
 
-			prep.bind(this)(this.ws1, callback, {
+			prep.bind(this)(this.ws1, cb, {
 				type: 'start',
 			}, this.ws1, false);
 		
@@ -1039,29 +1129,29 @@ module.exports = function() {
 
 		it("starts the countdown if the game host requests this when all "
 				+ "players are ready", function(done) {
-			var callback = function(msg) {
-				clearTimeout(wss.qinsts[this.code].timeout);
+			var cb = function(msg) {
+				clearTimeout(this.qinst.timeout);
 				expect(msg.type).to.equal('qinstStartCountdown');
-				expect(wss.qinsts[this.code].phase)
+				expect(this.qinst.phase)
 					.to.equal(wss.QINST_PHASE_READY);
-				expect(wss.qinsts[this.code].isJoinable).to.be.false;
+				expect(this.qinst.isJoinable).to.be.false;
 				done();
 			}.bind(this);
 
-			prep.bind(this)(this.ws1, callback, {
+			prep.bind(this)(this.ws1, cb, {
 				type: 'start',
 			});
 		});
 
 		it("notifies the other players that the countdown has started",
 			function(done) {
-			var callback = function(msg) {
-				clearTimeout(wss.qinsts[this.code].timeout);
+			var cb = function(msg) {
+				clearTimeout(this.qinst.timeout);
 				expect(msg.type).to.equal('qinstStartCountdown');
 				done();
 			}.bind(this);
 
-			prep.bind(this)(this.ws1, callback, {
+			prep.bind(this)(this.ws1, cb, {
 					type: 'start',
 				},
 				this.ws2
@@ -1070,10 +1160,10 @@ module.exports = function() {
 
 		it("does not start the countdown twice if the host sends the "
 				+ "countdown message twice", function(done) {
-			var callback = function(msg) {
+			var cb = function(msg) {
 				this.ws1.once('message', function(msg) {
 					msg = JSON.parse(msg);
-					clearTimeout(wss.qinsts[this.code].timeout);
+					clearTimeout(this.qinst.timeout);
 					expect(msg.type).to.equal('error');
 					expect(msg.errtype).to.equal('StartWrongPhase');
 					done();
@@ -1082,7 +1172,7 @@ module.exports = function() {
 				this.ws1.send(JSON.stringify({type: 'start'}));
 			}.bind(this);
 
-			prep.bind(this)(this.ws1, callback, {
+			prep.bind(this)(this.ws1, cb, {
 					type: 'start',
 				},
 			);
@@ -1092,20 +1182,20 @@ module.exports = function() {
 				+ "requests the cancellation", function(done) {
 			useFakeTimeouts.bind(this)();
 
-			var callback = function() {
+			var cb = function() {
 				this.ws2.on('message', function(msg) {
 					msg = JSON.parse(msg);
 					if (msg.type === 'error') {
 						expect(msg.errtype).to.equal('UnauthorizedCancelStart');
-						expect(wss.qinsts[this.code].phase)
+						expect(this.qinst.phase)
 							.to.equal(wss.QINST_PHASE_READY);
 				
 						// check that the countdown was not cancelled, i.e.
 						// the game starts after five seconds
 						this.clock.tick(5010);
-						expect(wss.qinsts[this.code].phase)
+						expect(this.qinst.phase)
 							.to.equal(wss.QINST_PHASE_ACTIVE);
-						expect(wss.qinsts[this.code].isJoinable).to.be.false;
+						expect(this.qinst.isJoinable).to.be.false;
 						this.clock.restore();
 						done();
 					}
@@ -1114,7 +1204,7 @@ module.exports = function() {
 				this.ws2.send(JSON.stringify({type:'cancelStart'}));
 			}.bind(this);
 		
-			prep.bind(this)(this.ws1, callback, {
+			prep.bind(this)(this.ws1, cb, {
 					type: 'start',
 				}
 			);
@@ -1125,20 +1215,20 @@ module.exports = function() {
 				function(done) {
 			useFakeTimeouts.bind(this)();
 					
-			var callback = function() {
+			var cb = function() {
 				this.ws1.once('message', function(msg) {
 					msg = JSON.parse(msg);
 					expect(msg.type).to.equal('qinstCancelCountdown');
-					expect(wss.qinsts[this.code].phase)
+					expect(this.qinst.phase)
 						.to.equal(wss.QINST_PHASE_PREP);
 			
 					// check that the countdown was indeed cancelled, i.e.
 					// the game does not start after five seconds
 					this.clock.tick(5010);
-					expect(wss.qinsts[this.code].timeout).to.be.null;
-					expect(wss.qinsts[this.code].phase)
+					expect(this.qinst.timeout).to.be.null;
+					expect(this.qinst.phase)
 						.to.equal(wss.QINST_PHASE_PREP);
-					expect(wss.qinsts[this.code].isJoinable).to.be.true;
+					expect(this.qinst.isJoinable).to.be.true;
 					this.clock.restore();
 					done();
 			}.bind(this));
@@ -1146,7 +1236,7 @@ module.exports = function() {
 				this.ws1.send(JSON.stringify({type:'cancelStart'}));
 			}.bind(this);
 		
-			prep.bind(this)(this.ws1, callback, {
+			prep.bind(this)(this.ws1, cb, {
 					type: 'start',
 				}
 			);
@@ -1154,7 +1244,7 @@ module.exports = function() {
 
 		it("notifies all players that the countdown has been canceled",
 				function(done) {
-			var callback = function(msg) {
+			var cb = function(msg) {
 				this.ws2.once('message', function(msg) {
 					msg = JSON.parse(msg);
 					expect(msg.type).to.equal('qinstCancelCountdown');
@@ -1164,7 +1254,7 @@ module.exports = function() {
 				this.ws1.send(JSON.stringify({type:'cancelStart'}));
 			}.bind(this);
 		
-			prep.bind(this)(this.ws1, callback, {
+			prep.bind(this)(this.ws1, cb, {
 					type: 'start',
 				},
 				this.ws2
@@ -1173,10 +1263,10 @@ module.exports = function() {
 
 		it("does not cancel the countdown twice if the host sends the "
 				+ "cancel message twice", function(done) {
-			var callback = function(msg) {
+			var cb = function(msg) {
 				this.ws2.once('message', function(msg) {
 					this.ws1.once('message', function(msg) {
-						clearTimeout(wss.qinsts[this.code].timeout);
+						clearTimeout(this.qinst.timeout);
 						msg = JSON.parse(msg);
 						expect(msg.type).to.equal('error');
 						expect(msg.errtype).to.equal(
@@ -1190,7 +1280,7 @@ module.exports = function() {
 				this.ws1.send(JSON.stringify({type:'cancelStart'}));
 			}.bind(this);
 		
-			prep.bind(this)(this.ws1, callback, {
+			prep.bind(this)(this.ws1, cb, {
 					type: 'start',
 				},
 				this.ws2
@@ -1201,18 +1291,18 @@ module.exports = function() {
 				function(done) {
 			useFakeTimeouts.bind(this)();
 	
-			var callback = function(msg) {
+			var cb = function(msg) {
 				expect(msg.type).to.equal('qinstStartCountdown');
 		
 				this.clock.tick(4990);
-				expect(wss.qinsts[this.code].phase)
+				expect(this.qinst.phase)
 					.to.equal(wss.QINST_PHASE_READY);
-				expect(wss.qinsts[this.code].isJoinable).to.be.false;
+				expect(this.qinst.isJoinable).to.be.false;
 				this.clock.restore();
 				done();
 			}.bind(this);
 		
-			prep.bind(this)(this.ws1, callback, {
+			prep.bind(this)(this.ws1, cb, {
 					type: 'start',
 				}
 			);
@@ -1221,18 +1311,18 @@ module.exports = function() {
 		it("starts the game after five seconds", function(done) {
 			useFakeTimeouts.bind(this)();
 	
-			var callback = function(msg) {
+			var cb = function(msg) {
 				expect(msg.type).to.equal('qinstStartCountdown');
 		
 				this.clock.tick(5010);
-				expect(wss.qinsts[this.code].phase)
+				expect(this.qinst.phase)
 					.to.equal(wss.QINST_PHASE_ACTIVE);
-				expect(wss.qinsts[this.code].isJoinable).to.be.false;
+				expect(this.qinst.isJoinable).to.be.false;
 				this.clock.restore();
 				done();
 			}.bind(this);
 		
-			prep.bind(this)(this.ws1, callback, {
+			prep.bind(this)(this.ws1, cb, {
 					type: 'start',
 				}
 			);
@@ -1242,7 +1332,7 @@ module.exports = function() {
 				function(done) {
 			useFakeTimeouts.bind(this)();
 
-			var callback = function(msg) {
+			var cb = function(msg) {
 				expect(msg.type).to.equal('qinstStartCountdown');
 				
 				this.ws1.once('message', function(msg) {
@@ -1260,7 +1350,7 @@ module.exports = function() {
 				this.clock.tick(5010);
 			}.bind(this);
 
-			prep.bind(this)(this.ws1, callback, {
+			prep.bind(this)(this.ws1, cb, {
 					type: 'start',
 				}
 			);

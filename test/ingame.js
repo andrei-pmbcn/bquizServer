@@ -46,7 +46,7 @@ module.exports = function() {
 					this.ws3.send(JSON.stringify({
 						type: 'join', 
 						code: this.code,
-						username: 'user3',
+						rname: 'user3',
 						password: 'pass3',
 						nickname: 'nick3',
 					}));
@@ -82,7 +82,7 @@ module.exports = function() {
 			this.ws1.send(JSON.stringify({
 				type: 'create', 
 				quizId: this.quizId, 
-				username: 'user1'
+				nickname: 'nick1'
 			}));
 		}
 
@@ -116,7 +116,7 @@ module.exports = function() {
 			cb(msg);
 		}.bind(this));
 		
-		this.clock.tick(5010);
+		this.clock.tick(5000);
 	};
 
 	var sendAnswer = function(ws, questionIndex, answer) {
@@ -128,13 +128,14 @@ module.exports = function() {
 	};
 
 	var requestNextQuestionHNP = function(
-			cb, sender = this.ws1, receiver = this.ws1) {
+			cb, sender = this.ws1, receiver = this.ws1,
+			answerIndex = null, nextQuestionIndex = null) {
 		// the sender requests the next question and the receiver receives
 		// the question message; the host is not playing
 
 		var nextQuestionListener =  function(msg) {
 			msg = JSON.parse(msg);
-			if (msg.type === 'question') {
+			if (msg.type === 'question' || msg.type === 'error') {
 				receiver.removeListener('message', nextQuestionListener);
 				cb(msg);
 			}
@@ -146,23 +147,30 @@ module.exports = function() {
 			if (msg.type === 'answerFeedback') {
 				kMessages++;
 			}
-
 			if (kMessages === 2) {
 				this.ws2.removeListener('message', answerListener);
 				this.ws3.removeListener('message', answerListener);
 
+				if (nextQuestionIndex === null) {
+					nextQuestionIndex = this.qinst.questionIndex;
+				}
+
 				receiver.on('message', nextQuestionListener);
 				sender.send(JSON.stringify({
 					type: 'nextQuestion',
-					questionIndex: this.qinst.questionIndex
+					questionIndex: nextQuestionIndex
 				}));
 			}
 		}.bind(this);
 		this.ws2.on('message', answerListener);
 		this.ws3.on('message', answerListener);
 
-		sendAnswer(this.ws2, 1, [2]);
-		sendAnswer(this.ws3, 1, [3]);
+		if (answerIndex === null) {
+			answerIndex = this.qinst.questionIndex;
+		}
+			
+		sendAnswer(this.ws2, answerIndex, [2]);
+		sendAnswer(this.ws3, answerIndex, [3]);
 	};
 
 	var requestNextQuestionHP = function(
@@ -206,6 +214,65 @@ module.exports = function() {
 	};
 
 	describe("functionality common to all games", function() {
+		describe("players reconnecting in the active phase", function() {
+			function reconnect(done, ws, username, password, hasExtra) {
+				var cb = function(msg) {
+					ws.close(1001);
+
+					createWebsocket(function(ws) {
+						ws.once('message', function(msg) {
+							msg = JSON.parse(msg);
+							expect(msg.type).to.equal('welcome');
+							expect(msg.phase).to.equal(wss.QINST_PHASE_ACTIVE);
+							expect(msg.players).to.deep.equal(
+								this.qinst.players);
+							expect(msg.settings).to.deep.equal(
+								this.qinst.quiz.settings);
+							expect(msg.question).to.exist;
+							expect(msg.question.index).to.equal(1);
+
+							if (hasExtra) {
+								expect(msg.correctAnswer).to.deep.equal([1]);
+								expect(msg.commentary).to.equal('Geneza 1:1');
+							} else {
+								expect(msg.correctAnswer).to.be.null;
+								expect(msg.commentary).to.be.null;
+							}
+							done();
+						}.bind(this));
+						
+						ws.send(JSON.stringify({
+							type: 'join',
+							code: this.code,
+							username: username,
+							password: password,
+						}));
+					}.bind(this));
+					
+				}.bind(this);
+
+				startGame.bind(this)(cb);
+			}
+			
+			it("sends a non-host player the correct welcome message for "
+					+ "the active phase", function(done) {
+				reconnect.bind(this)(done, this.ws2, 'user2', 'pass2', false);
+			});
+
+			it("sends a host player the correct welcome message for "
+					+ "the active phase when the host is not playing",
+					function(done) {
+				reconnect.bind(this)(done, this.ws1, 'user1', 'pass1', true);
+			});
+
+			it("sends a host player the correct welcome message for "
+					+ "the active phase when the host is playing",
+					function(done) {
+				this.qinst.quiz.settings.doesHostPlay = true;
+				reconnect.bind(this)(done, this.ws2, 'user1', 'pass1', false);
+			});
+		});
+		
 		describe("sending questions", function() {
 			it("sends the correct answer and commentary with the "
 					+ "qinstActive message if the player is the host and "
@@ -421,8 +488,6 @@ module.exports = function() {
 						expect(msg.errtype).to.equal('AnswerWrongPhase');
 						expect(msg.doesDisplay).to.be.false;
 
-						console.log("reached");
-
 						done();
 					}.bind(this));
 
@@ -607,85 +672,607 @@ module.exports = function() {
 	});
 
 	describe("games where players advance together", function() {
-
 		describe("answering and receiving feedback", function() {
-			it("sets hasAnswered to true when the player answers");
+			it("sets hasAnswered to true when the player answers",
+					function(done) {
+				var player = this.qinst.players.find(
+					(x) => (x.nickname === 'nick2'));
+				expect(player.hasAnswered).to.be.false;
+
+				var cb = function(msg) {
+					this.ws2.once('message', function(msg) {
+						msg = JSON.parse(msg);
+						expect(msg.type).to.equal('answerFeedback');
+						expect(player.hasAnswered).to.be.true;
+						done();
+					});
+
+					sendAnswer(this.ws2, 1, [1]);
+				}.bind(this);
+
+				startGame.bind(this)(cb, this.ws2);
+			});
 
 			it("sends the commentary and correct answer when the player "
-				+ "answers");
+					+ "answers", function(done) {
+				var cb = function(msg) {
+					this.ws2.once('message', function(msg) {
+						msg = JSON.parse(msg);
+						expect(msg.type).to.equal('answerFeedback');
+						expect(msg.questionIndex).to.equal(1);
+						expect(msg.correctAnswer).to.deep.equal([1]);
+						expect(msg.commentary).to.equal('Geneza 1:1');
 
+						done();
+					}.bind(this));
+				
+					sendAnswer(this.ws2, 1, [1]);
+				}.bind(this);
+			
+				startGame.bind(this)(cb, this.ws2);
+			});
 		});
 	
 		describe("proceeding to the next question", function() {
-			it("does not process the nextQuestion request if the game is "
-					+ "in the prep phase");
+			function runNextQuestionWrongPhase(phase, done) {
+				var cb = function() {
+					var nextQuestionListener =  function(msg) {
+						msg = JSON.parse(msg);
+						if (msg.type === 'error') {
+							expect(msg.type).to.equal('error');
+							expect(msg.errtype).to.equal(
+								'NextQuestionWrongPhase');
+							done();
+						
+						}
+					}
+					
+					var kMessages = 0;
+					var answerListener = function(msg) {
+						msg = JSON.parse(msg);
+						if (msg.type === 'answerFeedback') {
+							kMessages++;
+						}
+						if (kMessages === 2) {
+							this.ws2.removeListener('message', answerListener);
+							this.ws3.removeListener('message', answerListener);
 
-			it("does not process the nextQuestion request if the game is "
-					+ "in the ready phase");
+							this.qinst.phase = phase;
+
+							this.ws1.on('message', nextQuestionListener);
+							this.ws1.send(JSON.stringify({
+								type: 'nextQuestion',
+								questionIndex: this.qinst.questionIndex
+							}));
+						}
+					}.bind(this);
+					this.ws2.on('message', answerListener);
+					this.ws3.on('message', answerListener);
+
+					sendAnswer(this.ws2, 1, [2]);
+					sendAnswer(this.ws3, 1, [3]);
+				}.bind(this);
+
+				startGame.bind(this)(cb, this.ws2);
+			}
+
+			function requestNextQuestionNotAllReady(cb, answerers) {
+				kMessages = 0;
+				var answerListener = function(msg) {
+					msg = JSON.parse(msg);
+					expect(msg.type).to.equal('answerFeedback');
+					kMessages++;
+
+					if (kMessages === answerers.length) {
+						for (answerer of answerers) {
+							answerer.removeListener('message', answerListener);
+						}
+
+						this.ws1.once('message', function(msg) {
+							msg = JSON.parse(msg);
+							expect(msg.type).to.equal('error');
+							expect(msg.errtype).to.equal(
+								'NextQuestionNotAllReady');
+							cb();
+						});
+
+						this.ws1.send(JSON.stringify({
+							type: 'nextQuestion',
+							questionIndex: 1,
+						}));
+					}
+				}.bind(this)
+
+				for (answerer of answerers) {
+					answerer.on('message', answerListener);
+					sendAnswer(answerer, 1, [1]);
+				}
+			}
+
+
+
 			
 			it("does not process the nextQuestion request if the game is "
-					+ "in the finished phase");
+					+ "in the prep phase", function(done) {
+				runNextQuestionWrongPhase.bind(this)(
+					wss.QINST_PREP_PHASE, done);
+			});
+
+			it("does not process the nextQuestion request if the game is "
+					+ "in the ready phase", function(done) {
+				runNextQuestionWrongPhase.bind(this)(
+					wss.QINST_READY_PHASE, done);
+			});
+			
+			it("does not process the nextQuestion request if the game is "
+					+ "in the finished phase", function(done) {
+				runNextQuestionWrongPhase.bind(this)(
+					wss.QINST_FINISHED_PHASE, done);
+			});
 			
 			it("uses per-question timing even when isTimePerQuestion "
-				+ "is set to false")
+					+ "is set to false", function(done) {
+				var cb2 = function(msg) {
+					expect(msg.type).to.equal('question');
+					expect(msg.question.index).to.equal(2);
+					done();
+				}
+
+				var cb1 = function(msg) {
+					var kTime = new Date();
+					var delta = this.qinst.finishTime.getTime()
+						- kTime.getTime();
+
+					var question = this.qinst.quiz.questions.find(
+						(x) => (x.index === 1));
+					expect(question.time).to.be.null;
+					var quizTimeMs = parseInt(
+						1000 * this.qinst.quiz.settings.time);
+					expect(quizTimeMs).to.equal(delta);
+
+					requestNextQuestionHNP.bind(this)(cb2, this.ws1, this.ws2);
+				}.bind(this);
+				this.qinst.quiz.settings.isTimePerQuestion = false;
+
+				startGame.bind(this)(cb1, this.ws2);
+			});
 
 			it("proceeds to the next question on request when all players "
-				+ "other than the host have answered, if the host is not "
-				+ "playing")
+					+ "other than the host have answered, if the host is not "
+					+ "playing", function(done) {
+				var cb2 = function(msg) {
+					expect(msg.type).to.equal('question');
+					expect(msg.question.index).to.equal(2);
+					done();
+				}.bind(this);
+
+				var cb1 = function(msg) {
+					requestNextQuestionHNP.bind(this)(cb2, this.ws1, this.ws2);
+				}.bind(this);
+
+				startGame.bind(this)(cb1, this.ws2);
+			});
 
 			it("proceeds to the next question on request when all players "
-				+ "including the host have answered, if the host is playing")
+					+ "including the host have answered, if the host is "
+					+ "playing", function(done) {
+				var cb2 = function(msg) {
+					expect(msg.type).to.equal('question');
+					expect(msg.question.index).to.equal(2);
+					done();
+				}.bind(this);
 
-			it("does not proceed to the next question on request if not all "
-				+ "players other than the host have answered, if the host is "
-				+ "not playing")
+				var cb1 = function(msg) {
+					requestNextQuestionHP.bind(this)(cb2, this.ws1, this.ws2);
+				}.bind(this);
 
-			it("does not proceed to the next question on request if not all "
-				+ "players have answered, if the host is playing")
+				this.qinst.quiz.settings.doesHostPlay = true;
+				startGame.bind(this)(cb1, this.ws2);
+			});
+
+			it("does not proceed to the next question on request if not "
+					+ "all players other than the host have answered, if the "
+					+ "host is not playing", function(done) {
+				var cb = function(msg) {
+					requestNextQuestionNotAllReady.bind(this)(
+						done, [this.ws2]);
+				}.bind(this);
+
+				startGame.bind(this)(cb, this.ws2);
+			});
+
+			it("does not proceed to the next question on request if not "
+					+ "all players have answered, if the host is playing",
+					function(done) {
+				var cb = function(msg) {
+					requestNextQuestionNotAllReady.bind(this)(
+						done, [this.ws2, this.ws3]);
+				}.bind(this);
+
+				this.qinst.quiz.settings.doesHostPlay = true;
+
+				startGame.bind(this)(cb, this.ws2);
+			});
 
 			it("does not proceed to the next question if the index in the "
-				+ "nextQuestion message does not match the current question's "
-				+ "index")
+					+ "nextQuestion message does not match the current "
+					+ "question's index", function(done) {
+				var cb2 = function(msg) {
+					expect(msg.type).to.equal('error');
+					expect(msg.errtype).to.equal('NextQuestionWrongQuestion');
+					done();
+				}.bind(this);
+						
+				var cb1 = function(msg) {
+					requestNextQuestionHNP.bind(this)(
+						cb2, this.ws1, this.ws1, null, 2);
+				}.bind(this);
+
+				startGame.bind(this)(cb1, this.ws2);
+			})
 
 			it("handles two successive questions where the host proceeds "
-				+ "to the next question via a nextQuestion message")
+					+ "to the next question via a nextQuestion message",
+					function(done) {
+				var cb3 = function(msg) {
+					expect(msg.type).to.equal('question');
+					expect(msg.question.index).to.equal(3);
+					done();
+				}.bind(this);
+
+				var cb2 = function(msg) {
+					expect(msg.type).to.equal('question');
+					expect(msg.question.index).to.equal(2);
+					requestNextQuestionHNP.bind(this)(cb3);
+				}.bind(this);
+
+				var cb1 = function(msg) {
+					expect(msg.question.index).to.equal(1);
+					requestNextQuestionHNP.bind(this)(cb2);
+				}.bind(this);
+
+				startGame.bind(this)(cb1, this.ws2);
+			});
 
 			it("proceeds to the next question when the time expires "
-				+ "irrespective of whether anyone has answered the question "
-				);
+					+ "irrespective of whether anyone has answered the "
+					+ "question", function(done) {
+				var question = this.qinst.quiz.questions.find(
+					(x) => (x.index === 1));
+				expect(question.time).to.be.null;
 
-			it("enters hostless mode when the host leaves the game, clearing "
-				+ "all host-related variables");
+				var cb = function(msg) {
+					this.ws1.once('message', function(msg) {
+						msg = JSON.parse(msg);
+						expect(msg.type).to.equal('question');
+						done();
+					}.bind(this));
 
-			it("still proceeds to the next question when the question time "
-				+ "expires while in hostless mode");
+					this.clock.tick(this.qinst.quiz.settings.time * 1000);
+				}.bind(this);
+			
+				startGame.bind(this)(cb, this.ws2);
+			});
 
-			it("sets hasAnswered to false for non-host players when the game "
-				+ "proceeds to the next question");
+			it("enters hostless mode when the host leaves the game, "
+					+ "clearing all host-related variables", function(done) {
+				var cb = function(msg) {
+					this.ws2.once('message', function(msg) {
+						msg = JSON.parse(msg);
+						expect(msg.type).to.equal('playerLeft');
+						expect(this.qinst.hostConn).to.be.null;
+						expect(this.qinst.hostNickname).to.be.null;
+						done();
+					}.bind(this));
 
-			it("sets hasAnswered to false for the host player when the game "
-				+ "proceeds to the next question if the host is playing");
+					this.ws1.send(JSON.stringify({
+						type: 'leave',
+					}));
+				}.bind(this);
 
+				startGame.bind(this)(cb, this.ws2);
+			});
+
+			it("still proceeds to the next question when the question "
+					+ "time expires while in hostless mode", function(done) {
+				var cb = function(msg) {
+					var question = this.qinst.quiz.questions.find(
+						(x) => (x.index === 1));
+					expect(question.time).to.be.null;
+
+					this.ws2.once('message', function(msg) {
+						msg = JSON.parse(msg);
+						expect(msg.type).to.equal('playerLeft');
+						expect(this.qinst.hostConn).to.be.null;
+						expect(this.qinst.hostNickname).to.be.null;
+
+						this.ws2.once('message', function(msg) {
+							msg = JSON.parse(msg);
+							expect(msg.type).to.equal('question');
+							expect(msg.question).to.exist;
+							expect(msg.question.index).to.equal(2);
+							done();
+						}.bind(this));
+
+						this.clock.tick(this.qinst.quiz.settings.time * 1000);
+					}.bind(this));
+
+					this.ws1.send(JSON.stringify({ type: 'leave' }));
+				}.bind(this);
+			
+				startGame.bind(this)(cb, this.ws2);
+			});
+
+			it("sets hasAnswered to false for non-host players when the "
+					+ "game proceeds to the next question", function(done) {
+				var cb2 = function(msg) {
+					expect(msg.type).to.equal('question');
+					expect(this.conn2.player.hasAnswered).to.be.false;
+					expect(this.conn3.player.hasAnswered).to.be.false;
+					done();
+				}.bind(this);
+			
+				var cb1 = function(msg) {
+					requestNextQuestionHNP.bind(this)(cb2);
+				}.bind(this);
+
+				expect(this.conn1.player.hasAnswered).to.be.false;
+				expect(this.conn2.player.hasAnswered).to.be.false;
+				expect(this.conn3.player.hasAnswered).to.be.false;
+
+				startGame.bind(this)(cb1, this.ws2);
+			});
+
+			it("sets hasAnswered to false for all players including the "
+					+ "host player when the game proceeds to the next "
+					+ "question if the host is playing", function(done) {
+				var cb2 = function(msg) {
+					expect(msg.type).to.equal('question');
+					expect(this.conn1.player.hasAnswered).to.be.false;
+					expect(this.conn2.player.hasAnswered).to.be.false;
+					expect(this.conn3.player.hasAnswered).to.be.false;
+					done();
+				}.bind(this);
+			
+				var cb1 = function(msg) {
+					requestNextQuestionHP.bind(this)(cb2);
+				}.bind(this);
+
+				expect(this.conn1.player.hasAnswered).to.be.false;
+				expect(this.conn2.player.hasAnswered).to.be.false;
+				expect(this.conn3.player.hasAnswered).to.be.false;
+
+				this.qinst.quiz.settings.doesHostPlay = true;
+				startGame.bind(this)(cb1, this.ws2);
+			});
 		});
 
 
 		describe("game completion", function() {
+			// have the two non-host players send the answers to all questions
+			// apart from the final question, for which only player 3 answers
+			function advanceNearFinishHNP(cb) {
+				var advance = function() {
+					var kAnswerNoticeMessages = 0;
+					var kQuestion = 1;
+
+					var finalListener = function(msg) {
+						msg = JSON.parse(msg);
+						expect(msg.type).to.equal('answerNotice');
+						kAnswerNoticeMessages++;
+						if (kAnswerNoticeMessages === 2) {
+							this.ws1.removeListener('message',
+								finalListener);
+							cb(msg);
+						}
+					}.bind(this);
+
+					var nextQuestionListener = function(msg) {
+						msg = JSON.parse(msg);
+						expect(msg.type).to.equal('question');
+						kQuestion++;
+
+						this.ws1.removeListener('message',
+							answerNoticeListener);
+						if (kQuestion == 2) {
+							this.ws1.on('message', answerNoticeListener);
+						} else if (kQuestion == 3) {
+							this.ws1.on('message', finalListener);
+						}
+						sendAnswer(this.ws2, kQuestion, [1]);
+						sendAnswer(this.ws3, kQuestion, [1]);
+					}.bind(this);
+
+					var answerNoticeListener = function(msg) {
+						msg = JSON.parse(msg);
+						expect(msg.type).to.equal('answerNotice');
+						kAnswerNoticeMessages++;
+
+						if (kAnswerNoticeMessages === 2) {
+							kAnswerNoticeMessages = 0;
+							this.ws1.removeListener(
+								'message', answerNoticeListener);
+							this.ws1.once('message', nextQuestionListener);
+							this.ws1.send(JSON.stringify({
+								type: 'nextQuestion',
+								questionIndex: kQuestion,
+							}));
+						}
+					}.bind(this);
+
+					this.ws1.on('message', answerNoticeListener);
+					sendAnswer(this.ws2, 1, [1]);
+					sendAnswer(this.ws3, 1, [1]);
+				}.bind(this);
+
+				startGame.bind(this)(advance, this.ws2);
+			};
+
+
 			it("sends the qinstEnd message to the host when the time of "
-				+ "the last question has expired");
+					+ "the last question has expired", function(done) {
+				var question = this.qinst.quiz.questions.find(
+					(x) => (x.index === 3));
+				expect(question.time).to.be.null;
+						
+				var cb = function() {
+					this.ws1.once('message', function(msg) {
+						msg = JSON.parse(msg);
+						expect(msg.type).to.equal('qinstEnd');
+						done();
+					}.bind(this))
+
+					this.clock.tick(this.qinst.quiz.settings.time * 1000);
+				}.bind(this);
+
+				advanceNearFinishHNP.bind(this)(cb);
+			});
 
 			it("sends the qinstEnd message to a player when the time of "
-				+ "the last question has expired");
+					+ "the last question has expired", function(done) {
+				var question = this.qinst.quiz.questions.find(
+					(x) => (x.index === 3));
+				expect(question.time).to.be.null;
+
+				var cb = function() {
+					this.ws2.on('message', function(msg) {
+						msg = JSON.parse(msg);
+						if (msg.type === 'qinstEnd') {
+							done();
+						}
+					}.bind(this))
+
+					this.clock.tick(this.qinst.quiz.settings.time * 1000);
+				}.bind(this);
+
+				advanceNearFinishHNP.bind(this)(cb);
+			});
 
 			it("sends the qinstEnd message to the host when the host "
-				+ "has sent nextQuestion after the final question");
+					+ "has sent nextQuestion after the final question"
+					, function(done) {
+				var question = this.qinst.quiz.questions.find(
+					(x) => (x.index === 3));
+				expect(question.time).to.be.null;
+
+				var cb = function() {
+					this.ws1.on('message', function(msg) {
+						msg = JSON.parse(msg);
+						if (msg.type === 'qinstEnd') {
+							done();
+						}
+					}.bind(this))
+
+					this.ws1.send(JSON.stringify({
+						type: 'nextQuestion',
+						questionIndex: 3,
+					}));
+				}.bind(this);
+
+				advanceNearFinishHNP.bind(this)(cb);
+			});
 
 			it("sends the qinstEnd message to a player when the host "
-				+ "has sent nextQuestion after the final question");
+					+ "has sent nextQuestion after the final question"
+					, function(done) {
+				var question = this.qinst.quiz.questions.find(
+					(x) => (x.index === 3));
+				expect(question.time).to.be.null;
 
-			it("does not send the qinstEnd message again if a player "
-				+ "resends their answer after the first qinstEnd message "
-				+ "was sent");
+				var cb = function() {
+					this.ws2.on('message', function(msg) {
+						msg = JSON.parse(msg);
+						if (msg.type === 'qinstEnd') {
+							done();
+						}
+					}.bind(this))
 
+					this.ws1.send(JSON.stringify({
+						type: 'nextQuestion',
+						questionIndex: 3,
+					}));
+				}.bind(this);
+
+				advanceNearFinishHNP.bind(this)(cb);
+			});
+
+			it("sends an error message if a player resends their "
+					+ "answer after the qinstEnd message was sent",
+					function (done) {
+				var question = this.qinst.quiz.questions.find(
+					(x) => (x.index === 3));
+				expect(question.time).to.be.null;
+
+				var cb = function() {
+					var kMessages = 0;
+					this.ws2.on('message', function(msg) {
+						msg = JSON.parse(msg);
+						kMessages++;
+
+						if (kMessages === 2) {
+							this.ws2.once('message', function(msg) {
+								msg = JSON.parse(msg);
+								expect(msg.type).to.equal('error');
+								expect(msg.errtype).to.equal(
+									'AnswerWrongPhase');
+								done();
+							}.bind(this));
+														
+							this.ws2.send(JSON.stringify({
+								type: 'answer',
+								questionIndex: 3,
+								answer: [1],
+							}));
+						}
+					}.bind(this))
+
+					this.ws1.send(JSON.stringify({
+						type: 'nextQuestion',
+						questionIndex: 3,
+					}));
+				}.bind(this);
+
+				advanceNearFinishHNP.bind(this)(cb);
+			});
+
+			it("sends an error message if the host resends their "
+				 	+ "nextQuestion message after the game has entered "
+					+ "the finished phase", function(done) {
+				var question = this.qinst.quiz.questions.find(
+					(x) => (x.index === 3));
+				expect(question.time).to.be.null;
+
+				var cb = function() {
+					var kMessages = 0;
+					this.ws2.on('message', function(msg) {
+						msg = JSON.parse(msg);
+						kMessages++;
+
+						if (kMessages === 2) {
+							this.ws1.once('message', function(msg) {
+								msg = JSON.parse(msg);
+								expect(msg.type).to.equal('error');
+								expect(msg.errtype).to.equal(
+									'NextQuestionWrongPhase');
+								done();
+							}.bind(this));
+														
+							this.ws1.send(JSON.stringify({
+								type: 'nextQuestion',
+								questionIndex: 3,
+							}));
+						}
+					}.bind(this))
+
+					this.ws1.send(JSON.stringify({
+						type: 'nextQuestion',
+						questionIndex: 3,
+					}));
+				}.bind(this);
+
+				advanceNearFinishHNP.bind(this)(cb);
+			
+			});
 		});
 	});
 
@@ -697,7 +1284,14 @@ module.exports = function() {
 
 		});
 
-		describe("quiz timing", function() {
+		describe("reconnecting in games where players advance separately",
+				function() {
+			it("sends the player the correct question in the welcome "
+				+ "message");
+		});
+
+		describe("quiz timing in games where players advance separately",
+				function() {
 			it("uses per-quiz timing when isTimePerQuestion is false");
 
 			it("sends the qinstEnd message after the time expires "
@@ -716,7 +1310,8 @@ module.exports = function() {
 		});
 
 
-		describe("answering questions", function() {
+		describe("answering questions in games where players advance "
+				+ "separately", function() {
 			it("throws an error when the host attempts to send "
 				+ "nextQuestion")
 
@@ -734,19 +1329,19 @@ module.exports = function() {
 				+ "message was sent");
 		});
 
-		describe("game completion", function() {
+		describe("game completion in games where players advance separately "
+				, function() {
 			it("sends the qinstEnd message to all players when the "
-				+ "time runs out");
+				+ "time runs out for the last player remaining ");
 
-			it("sends the qinstEnd message to all players when all players "
-				+ "have answered all questions");
+			it("sends the qinstEnd message to all players when the "
+				+ "last player remaining has answered the last question, ");
 
+			//[TODO] Use the 'qinstEnd' wss message
 			it("does not send the qinstEnd message again if a player "
-				+ "resends their answer after the first qinstEnd message "
-				+ "was sent");
+				+ "resends their answer after the game has entered "
+				+ "the finished phase, in games where the players advance "
+				+ "separately");
 		});
-
-
 	});
-
 }

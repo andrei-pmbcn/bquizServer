@@ -36,58 +36,18 @@ global.knex = require('knex')({
 const pregame = require('./pregame.js');
 const ingame = require('./ingame.js');
 
-global.createWebsocket = function(callback) {
+global.createWebsocket = function(cb) {
 	var ws = new WebSocket("ws://" + wsconfig.wsshost + ":" + wsconfig.wssport);
 
-	var elapsedTime = 0;
-	function timeout() {
-		elapsedTime += 5;
-		if (elapsedTime < 2000) {
-			if (ws.readyState === 1) {
-				callback(ws);
-			} else {
-				setTimeout(timeout, 5);
-			}
-		} else {
-			throw "websocket connection not opened after 2 seconds";
-		}
-	}
-	setTimeout(timeout, 5);
+	ws.once('open', function() {
+		cb(ws);
+	})
 }
 
 const logfileName = "logs/error_"
 		+ dateformat(new Date(Date.parse("2100/05/05 15:00:00")),
 			"yyyy_mm_dd") + ".txt";
 
-global.sendJoin1 = function() {
-	this.ws1.send(JSON.stringify({
-		type:'join',
-		code: this.code,
-		username: 'user1',
-		password: 'pass1',
-		nickname: 'nick1',
-	}));
-};
-
-global.sendJoin2 = function() {
-	this.ws2.send(JSON.stringify({
-		type:'join',
-		code: this.code,
-		username: 'user2',
-		password: 'pass2',
-		nickname: 'nick2',
-	}));
-}
-
-global.sendJoin3 = function() {
-	this.ws3.send(JSON.stringify({
-		type:'join',
-		code: this.code,
-		username: 'user3',
-		password: 'pass3',
-		nickname: 'nick3',
-	}));
-}
 
 global.deleteQinst = function(code) {
 	var qinst = wss.qinsts[code];
@@ -437,7 +397,8 @@ describe ("non-game", function() {
 			expect(quiz.description).to.equal('testquiz description');
 			expect(quiz.questions).to.have.lengthOf(3);
 
-			var question1 = quiz.questions[0];
+			var questions = quiz.questions.sort((x, y) => (x.index - y.index));
+			var question1 = questions[0];
 			expect(question1.points).to.equal(1);
 			expect(question1.text).to.equal('question1');
 			expect(question1.answers[0].text).to.equal('answer1.1');
