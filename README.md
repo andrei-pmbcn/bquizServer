@@ -1,21 +1,27 @@
-## API functions
-Those who want to incorporate bquiz into their own quiz projects must write a module containing all of these functions, each returning objects in the specified format. The `apimodule` entry 
+# Bquiz
+Bquiz is a multiplayer web-plugin framework that lets you create and play quizzes online. It features a server and web API written in node.js, using the `ws` websocket library and `express` http server framework, and comes with a javascript client written in Vue. The client may be attached to any webpage that includes the bquiz.js file and supplies a `<div id="bquiz"></div>` element anywhere on the page.
 
-The module `bquiz.js` and its settings file `bquizconf.yml` constitute an example of how this can work.
 
-##### fetchUser
-Fetches a given user's username from the database if the provided username and password match, otherwise returns `null`.
-- parameters
-  - **username** (string): the username of the user being fetched; included in *create* and *join* client messages.
-  - **password** (string): the password of the user being fetched; included in *join* client messages.
+## Getting started
 
-- return value (string | null): the username of the user being fetched, or `null`
-##### fetchQuiz
-Fetches the Quiz object from the database
-- parameters
-  - **quizId**: the variable (e.g. an integer database Id) of the quiz ; included in *create* client messages
+\[Installation instructions\]
 
-- return value (object): a complete Quiz object
+
+
+
+
+
+
+
+## API module
+Those who want to incorporate the bquiz framework into their own quiz projects must write a node.js module containing functions specific to their own quiz. The framework calls the functions in this module in order to save and load quizzes to and from any databases, xml files and other storage media the developer has set up. 
+
+A default module, complete with a database for storing quizzes and their questions, will be provided at a later date.
+
+For the time being, the module `biblequiz.js` and its settings file `biblequiz.yml` constitute an example of how a quiz can be plugged into the framework.
+
+### API classes
+##### Quiz
 `{name, description, settings, questions}`
   - **name** (string): the name of the quiz
   - **description** (string): a description of the quiz
@@ -32,17 +38,42 @@ Fetches the Quiz object from the database
     - **text** (string): the text of the question, ideally no greater than 200 characters
     - **commentary** (string): a description of why the correct answer is in fact correct; set this to `null` to omit it
     - **isMultipleResponse** (bool): whether the question allows more than one answer to be included in the correct answer
-    - **correctAnswer** (int or array of ints): the index or indices of all sub-answers to the question that together comprise the correct answer
+    - **correctAnswer** (int or array of ints): the index or indices of all choices in the question that together comprise the correct answer
     - **time** (double): the time, in seconds, for the question; if not set to `null`, it overrides the *time* variable in the *settings* object when *isTimePerQuestion* is set to `true`, otherwise it has no effect.
     - **points** (double): the number of points awarded for answering the question correctly.
-    - **answers** (array of SubAnswers): the available sub-answers to the question.
+    - **choices** (array of Choices): the available choices in the question.
 
-      Each SubAnswer object comprises one of the choices that the player can select when answering a question, and contains the following:
-      - **index** (int): the sub-answer's index, ranging from 1 to the number of sub-answers available for the question. All sub-answers should have a unique index.
-      - **text** (string): the text of the sub-answer, ideally no greater than 100 characters
 
-## Events
-Those who wish to treat bquiz as a framework and extend it can use the various events emitted by its websocket server object.
+      Each Choice object comprises one of the choices that the player can select when answering a question, and contains the following:
+      - **index** (int): the choice's index, ranging from 1 to the number of choices available for the question. All choices should have a unique index.
+      - **text** (string): the text of the choice, ideally no greater than 100 characters
+
+
+
+### API functions
+
+The following functions must be present in the API module:
+
+##### verifyUser
+Verifies whether the specified username and password match a given user from the website's user directory (which can be, for example, a database table); returns true if so, otherwise returns false. Bquiz allows users to be logged in and provides various benefits for logged in users, and so requires this function to identify users who are logged in.
+- parameters
+  - **username** (string): the username of the user being fetched; included in *create* and *join* client messages.
+  - **password** (string): the password of the user being fetched; included in *join* client messages.
+
+- return value (string | null): the username of the user being fetched, or `null`
+##### fetchQuiz
+Fetches the Quiz object corresponding to a given quiz from the database or any other back-end medium used to store quizzes. The Quiz object should contain all information pertaining to the quiz, including its questions and its settings (see below).
+- parameters
+  - **quizId**: the variable (e.g. an integer database Id) of the quiz ; included in *create* client messages
+
+- return value (object): a complete Quiz object
+
+
+# Internals 
+The following is only of interest to those wishing to develop extensions for bquiz or develop bquiz itself; users who simply want to incorporate bquiz into their own projects should only ever need to use the API functions.
+
+## Websocket server Events
+Those who wish to extend the bquiz framework can use the various events emitted by its websocket server object.
 ##### qinstCreated
 triggered after the quiz instance is generated, when the game has entered the `'prep'` phase
 ##### qinstStartCountdown
@@ -114,7 +145,7 @@ In response, the server checks whether the sender is the host and whether the ga
 `{type, questionIndex, answer}`
 - **type**: the string `'answer'`
 - **questionIndex**: the index of the question being answered
-- **answer**: an array of the sub-answers selected by the player that together comprise what the player considers the correct answer.
+- **answer**: an array of the choices selected by the player that together comprise what the player considers the correct answer.
 
 Sent when a player answers a question.
 ##### nextQuestion
@@ -123,12 +154,8 @@ Sent when a player answers a question.
 -**questionIndex**: the index of the current, not the next question
 
 Sent when the host advances the quiz, or the quiz advances automatically, to the next question in quizzes where the setting `doesAdvanceTogether` is set to `true`, or when the player answers the question in quizzes where the setting `doesAdvanceTogether` is set to `false`.
-##### endAcknowledged
-`{type}`
-- **type**: the string `'endAcknowledged'`
-  
-Automatically sent by the player to prevent being booted 30 seconds after the game ends.
-In response, the server cancels the 30-second timeout timer.
+
+
 ##### leave
 `{type}`
 - **type**: the string `'leave'`
@@ -155,19 +182,19 @@ when the game is in the 'active' phase:
 - **type**: the string `'welcome'`
 - **phase**: the string `'active'`
 - **players**: the list of players currently taking part in the quiz
+- **settings**: the settings of the quiz
 - **question**: the current question in the quiz
 - **finishTime**: the time at which the current question or the quiz will expire
 -**correctAnswer**: only sent to the host, and only if *doesHostPlay* is set to `false`. Contains the correct answer for the first question of the quiz.
 -**commentary**: only sent to the host, and only if *doesHostPlay* is set to `false`. Contains the commentary for the first question of the quiz.
-- **settings**: the settings of the quiz
 
 when the game is in the 'finished' phase:
 `{type, phase, players, results}`
 - **type**: the string `'welcome'`
 - **phase**: the string `'finished'`
 - **players**: the list of players currently taking part in the quiz
-- **results**: the full quiz results object
 - **settings**: the settings of the quiz  
+- **results**: the full quiz results object
 
 ##### code
 `{type, code}`
@@ -226,7 +253,7 @@ notification to all players when the game begins, also containing the first ques
 `{type, question, correctAnswer, commentary}`
 -**type** (string): the string `'answerFeedback'`;
 -**questionIndex** (int): the index of the question
--**correctAnswer** (array of ints): the indices of the sub-answers that together comprise the correct answer for the quiz question
+-**correctAnswer** (array of ints): the indices of the choices that together comprise the correct answer for the quiz question
 -**commentary** (string): the text of the question's commentary, which describes why the answer is correct
 
 notification sent to the player after the player has answered a question
@@ -234,7 +261,7 @@ notification sent to the player after the player has answered a question
 -**type** (string): the string `'answerNotice'`;
 -**nickname** (string): the nickname of the player answering the question
 -**questionIndex** (int): the index of the question
--**answer** (array of ints): the indices of the sub-answers that together comprise the player's answer
+-**answer** (array of ints): the indices of the choices that together comprise the player's answer
 
 notification sent to the host, if the host is not playing, after a player has answered a question
 ##### question
@@ -275,12 +302,12 @@ notification that the server has closed its connection to the player
 
 message sent when an error has arisen
 
-## Internal objects
-Only of interest to those wishing to develop extensions for bquiz or bquiz itself; users who simply want to incorporate bquiz into their own projects should only ever need to use the API objects.
-##### wss
+## Websocket server classes
+
+##### WebSocket.Server
 The websocket server object as described in [the ws documentation](https://github.com/websockets/ws/blob/HEAD/doc/ws.md), along with extra fields used by the quiz server
 `{doesThrottle, qinsts, conns, ...}`
-- **doesThrottle**: whether the server throttles messages sent at an interval of less than one second. Does not take *create* and *endAcknowledged* messages into account. Set this to false when running test suites.
+- **doesThrottle**: whether the server throttles messages after a series of messages is sent at a small enough interval. Set this to false when running test suites.
 - **qinsts**: an object storing all quiz instances on the server; each key is a nine-digit code referencing the quiz instance
 - **conns**: an array storing all connection objects to the server
 
@@ -310,12 +337,12 @@ Any player, including the host, in a given quiz instance
 - **nickname** (string): the nickname used throughout the quiz to identify the player
 - **username** (string): the player's username, or 'null' if no username exists
 - **isReady** (bool): whether the player is ready for the game to start, or for the next question if already in the game
-- **hasAnswered** (bool): whether the player has answered the current question. Only used when doesAdvanceTogether is set to `true`.
+- **hasAnswered** (bool): whether the player has answered the current question.
 - **hasFinished** (bool): whether the player has finished the quiz. Only used when doesAdvanceTogether is set to `false`.
-- **timeout** (Timeout): the timeout for the nextQuestion event 
+- **timeout** (Timeout): the timeout for the nextQuestion event, or the end-booting event (when the player has not acknowledged that the game has ended)
 - **currentQuestion** (int): the index of the current question being answered by the player; set to `null` if doesAdvanceTogether is set to `true`
 - **finishTime** (double): the time until the current question expires for the current player or the time until the quiz ends, depending on whether the quiz's *settings.isTimePerQuestion* value is `true` or `false`. Only used when *doesAdvanceTogether* is set to `false`, otherwise the value is set to `null`.
-- **answers** (array of PlayerAnswers): the player's answers so far
+- **answers** (array of Answers): the player's answers so far
 
 #### Conn
 The data associated with a given websocket connection
@@ -323,17 +350,19 @@ The data associated with a given websocket connection
 - **ws** (WebSocket): the websocket object as described in [the ws documentation](https://github.com/websockets/ws/blob/HEAD/doc/ws.md)
 - **qinst** (Qinst): the quiz instance being played
 - **player** (Player): the player connected to the websocket server
+- **throttleChecks** (Array of Dates): the times of the five most recent requests issued during a period when no throttling was taking place
 - **throttleExpiry** (Date): the time at which the throttle will expire on this connection, allowing more messages from the connection to be processed
+- **timeout** (Timeout): the connection's idle timeout, which causes the connection to close if it does not periodically reply with pongs to the server's pings
 
 #### Results
 The quiz results for a given player; does not include the questions and their correct answers as these are sent separately in the same message
 `{nickname, answers}`
--**nickname** (string): the player's nickname
--**answers** (array of PlayerAnswer objects): the player's full answers
+- **nickname** (string): the player's nickname
+- **answers** (array of Answer objects): the player's full answers
 
-#### PlayerAnswer
+#### Answer
 A given player's answer to a given question
 `{questionIndex, answer}`
   - **questionIndex**: the index of the question answered
-  - **answer**: the indices of the sub-answers that together comprise the player's answer
+  - **answer**: the indices of the choices that together comprise the player's answer
 

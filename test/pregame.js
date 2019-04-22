@@ -4,6 +4,14 @@
 //[TODO] Fix the 1000-ms tests
 
 module.exports = function() {
+	deleteQinst = function(code) {
+		var qinst = wss.qinsts[code];
+		for (conn of qinst.conns) {
+			conn.qinst = null;
+		}
+		delete wss.qinsts[code];
+	}
+
 	beforeEach(function(done) {
 		createWebsocket(function(ws) {
 			this.ws1 = ws;
@@ -39,6 +47,7 @@ module.exports = function() {
 		this.ws2.player = null;
 		wss.qinsts = {};
 
+		sinon.restore();
 		wss.doesThrottle = true;
 	});
 
@@ -109,6 +118,7 @@ module.exports = function() {
 
 		addAllPlayers.bind(this)(sendMessageAndRespond);
 	}
+
 
 	describe("players reconnecting in the prep phase", function() {
 		it("sends the welcome message if the player is logged in "
@@ -351,36 +361,67 @@ module.exports = function() {
 			}));
 		});
 
-		it("throttles (join) messages to 1/sec", function(done) {
+		function testThrottling(done, areMessagesDelayed) {
 			wss.doesThrottle = true;
 			useFakeTimeouts.bind(this)();
 
-			this.ws1.once('message', (function(msg) {
-				msg = JSON.parse(msg);
+			var sendR = function(cb) {
+				this.ws1.once('message', function(msg) {
+					if (areMessagesDelayed) {
+						this.clock.tick(
+							wsconfig.throttleReqInterval
+							/ (wsconfig.throttleCount - 1))
+					}
+					cb(msg);
+				}.bind(this))
+
+				this.ws1.send(JSON.stringify({type: 'ready'}))
+			}.bind(this);
+
+			var sendNR = function(cb) {
+				this.ws1.once('message', function(msg) {
+					if (areMessagesDelayed) {
+						this.clock.tick(
+							wsconfig.throttleReqInterval
+							/ (wsconfig.throttleCount - 1))
+					}
+					cb(msg);
+				}.bind(this))
+
+				this.ws1.send(JSON.stringify({type: 'notReady'}))
+			}.bind(this);
+
+			var finalSend = function() {
+				this.ws1.send(JSON.stringify({
+					type: 'join',
+					code: this.code,
+					nickname: 'nick2',
+				}));
+			}.bind(this);
+			
+			var sendAfterThrottle = function() {
 				this.ws1.once('message', function(msg) {
 					msg = JSON.parse(msg);
 
 					expect(msg.type).to.equal('error');
-					expect(msg.errtype).to.equal('WebsocketError');
-
-					var finalSend = function() {
-						this.ws1.send(JSON.stringify({
-							type: 'join',
-							code: this.code,
-							nickname: 'nick2',
-						}));
-					}.bind(this);
+					if (areMessagesDelayed) {
+						expect(msg.errtype).to.equal('AlreadyJoined');
+					} else {
+						expect(msg.errtype).to.equal('WebsocketError');
+					}
 
 					this.ws1.once('message', function(msg) {
 						msg = JSON.parse(msg);
+
 						expect(msg.type).to.equal('error');
 						expect(msg.errtype).to.equal('AlreadyJoined');
+
 						this.clock.restore();
 						done();
 					}.bind(this));
 
-					setTimeout(finalSend, 1010);
-					this.clock.tick(1020);
+					setTimeout(finalSend, wsconfig.throttleDuration + 10);
+					this.clock.tick(wsconfig.throttleDuration + 10);
 				}.bind(this));
 
 				this.ws1.send(JSON.stringify({
@@ -388,6 +429,34 @@ module.exports = function() {
 					code: this.code,
 					nickname: 'nick2',
 				}));
+			}.bind(this);
+
+			this.ws1.once('message', (function(msg) {
+				msg = JSON.parse(msg);
+				expect(msg.type).to.equal('welcome');
+
+				// advance the clock to clear the effects of previous messages
+				// on the throttling mechanism
+				this.clock.tick(wsconfig.throttleReqInterval);
+
+				// execute a chain of functions that send ready messages and
+				// notReady messages
+				var fns = [];
+				for (let i = 0; i < wsconfig.throttleCount; i++) {
+					if (i % 2) {
+						fns.push(sendR);
+					} else {
+						fns.push(sendNR);
+					}
+				}
+				fns.push(sendAfterThrottle);
+
+				function chain(fn) {
+					if (fn) {
+						fn(() => chain(fns.shift()));
+					}
+				}
+				chain(fns.shift());
 			}).bind(this));		
 
 			this.ws1.send(JSON.stringify({
@@ -395,6 +464,16 @@ module.exports = function() {
 				code: this.code,
 				nickname: 'nick1',
 			}));
+		}
+
+		it("throttles messages if enough are sent within a sufficiently "
+				+ "small period of time", function(done) {
+			testThrottling.bind(this)(done, false);
+		});
+
+		it("does not throttle messages if they are sent at a sufficiently "
+				+ "long time interval apart", function(done) {
+			testThrottling.bind(this)(done, true);
 		});
 
 		it("sends an error message on attempting to join when the code "

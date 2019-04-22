@@ -1,7 +1,17 @@
-apimodule: ./biblequiz.js # the path of the file that contains the api functions
+apimodule: ./sample/biblequiz.js # the path of the file that contains the api functions
 
 # websocket server settings
-wsshost: localhost #websocket server host
-wssport: 8090 #websocket server port
-throttleTime: 100 #the minimum interval (in milliseconds) between two messages
+wsshost: localhost # websocket server host
+wssport: 8090 # websocket server port
+throttleReqInterval: 100 # the interval (in milliseconds) during which
+    # throttleCount messages must be sent by a connection in order for 
+    # the server to throttle that connection
+throttleCount: 5 # the number of messages that must be sent in the
+    # throttleTime period in order for the player to become throttled
+throttleDuration: 1000 # the duration (in milliseconds) of a player's
+    # throttling, during which the player may not send messages
+pingDelay: 15000 # the time (in milliseconds) before the server sends each
+    # ping to a given client after receiving a pong signal
+pongWaitTime: 30000 # the time (in milliseconds) that the server may wait
+    # for the pong signal after sending a ping to a websocket
 

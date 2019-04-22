@@ -2,7 +2,7 @@ const yaml = require('js-yaml');
 const fs = require('fs');
 
 try {
-	var config = yaml.safeLoad(fs.readFileSync('biblequiz.yml', 'utf8'));
+	var config = yaml.safeLoad(fs.readFileSync('sample/biblequiz.yml', 'utf8'));
 } catch (ex) {
 	console.log(ex);
 }

@@ -12,13 +12,14 @@ global.wss = wss;
 
 
 try {
-	var wsconfig = yaml.safeLoad(fs.readFileSync('config.yml', 'utf8'));
+	global.wsconfig = yaml.safeLoad(fs.readFileSync('config.yml', 'utf8'));
 } catch (ex) {
 	console.log(ex);
 }
 
 try {
-	var dbconfig = yaml.safeLoad(fs.readFileSync('biblequiz.yml', 'utf8'));
+	global.dbconfig = yaml.safeLoad(
+		fs.readFileSync('sample/biblequiz.yml', 'utf8'));
 } catch (ex) {
 	console.log(ex);
 }
@@ -35,6 +36,7 @@ global.knex = require('knex')({
 
 const pregame = require('./pregame.js');
 const ingame = require('./ingame.js');
+const postgame = require('./postgame.js');
 
 global.createWebsocket = function(cb) {
 	var ws = new WebSocket("ws://" + wsconfig.wsshost + ":" + wsconfig.wssport);
@@ -47,15 +49,6 @@ global.createWebsocket = function(cb) {
 const logfileName = "logs/error_"
 		+ dateformat(new Date(Date.parse("2100/05/05 15:00:00")),
 			"yyyy_mm_dd") + ".txt";
-
-
-global.deleteQinst = function(code) {
-	var qinst = wss.qinsts[code];
-	for (conn of qinst.conns) {
-		conn.qinst = null;
-	}
-	delete wss.qinsts[code];
-}
 
 global.useFakeTimeouts = function() {
 	this.clock.restore();
@@ -434,44 +427,31 @@ describe ("non-game", function() {
 			nickname: 'nick1',
 		}));
 	});
+
+	it("keeps the connection open when receiving a ping", function(done) {
+		useFakeTimeouts.bind(this)();	
+		expect(wss.conns.length).to.equal(1);
+		var conn = wss.conns[0];
+		
+		conn.ws.on('pong', function() {
+			this.clock.tick(wsconfig.pingDelay);
+		}.bind(this));
+
+		var kPings = 0
+		this.ws1.on('ping', function() {
+			kPings++;
+			if (kPings === 2) {
+				expect(this.ws1.readyState).to.equal(this.ws1.OPEN);
+				done();
+			}
+		}.bind(this));
+	});
+
+	//[TODO] Manually test this
+	it("closes the connection when not receiving a ping");
 });
 
 describe("pre-game", pregame.bind(this));
-describe("in-game", ingame.bind(this));
+describe.only("in-game", ingame.bind(this));
+describe("post-game", postgame.bind(this));
 
-
-describe("post-game", function() {
-	beforeEach(function() {
-
-
-	});
-	
-	describe("player reconnecting", function() {
-		it("sends the game_finished message");
-
-		it("does not permit non-logged-in players to reconnect")
-	});
-
-	describe("end acknowledgement", function() {
-		it("removes a player after the timer if no end_acknowledged message "
-			+ "is sent");
-
-		it("does not remove a player after the timer if the end_acknowledged "
-			+ "message is sent");
-
-		it("triggers game deletion if the last player has left for not having "
-			+ "sent the end_acknowledged message");
-
-		it("does not throttle endAcknowledged messages");
-	});
-
-
-	describe("player leaving", function() {
-		it("removes the player from the database");
-
-		it("triggers game deletion if the last player has left");
-
-	});
-
-
-});

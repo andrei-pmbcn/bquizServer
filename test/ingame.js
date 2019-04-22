@@ -1050,7 +1050,7 @@ module.exports = function() {
 
 		describe("game completion", function() {
 			// have the two non-host players send the answers to all questions
-			// apart from the final question, for which only player 3 answers
+			// apart from the final question, for which player 3 alone answers
 			function advanceNearFinishHNP(cb) {
 				var advance = function() {
 					var kAnswerNoticeMessages = 0;

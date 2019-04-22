@@ -27,15 +27,18 @@ wss.QINST_PHASE_FINISHED = 3;
 
 
 /*** custom methods ***/
-const { fetchUser, fetchQuiz } = require(config.apimodule);
+const { verifyUser, fetchQuiz } = require(config.apimodule);
 
 class WebsocketConnection {
 	constructor(ws) {
 		this.ws = ws;
+		this.throttleChecks = [];
 		this.throttleExpiry = new Date();
 		this.qinst = null;
 		this.player = null;
-	}
+		this.pingTimeout = null;
+		this.failPongTimeout = null;
+	}	
 
 	/*** game events ***/
 
@@ -338,10 +341,18 @@ class WebsocketConnection {
 		if (this.ws.readyState !== this.ws.OPEN) {
 			return;
 		}
-		var results = {
-			nickname: this.player.nickname,
-			answers: this.player.answers,
+
+		var results = [];
+		for (let player of this.qinst.players) {
+			if (!(player.nickname === this.qinst.hostNickname)
+					&& !this.qinst.quiz.settings.doesHostPlay) {
+				results.push({
+					nickname: player.nickname,
+					answers: player.answers,
+				});
+			}
 		}
+
 		this.ws.send(JSON.stringify({
 			type: "qinstEnd",
 			questions: this.qinst.quiz.questions,
@@ -483,9 +494,10 @@ class WebsocketConnection {
 		// authenticate the user
 		if (msg.username && msg.password) {
 			try {
-				 var username = await fetchUser(msg.username, msg.password);
-				if (username) {
-					this.player.username = username;
+				 var isUsernameFound =
+					await verifyUser(msg.username, msg.password);
+				if (isUsernameFound) {
+					this.player.username = msg.username;
 				}
 			} catch (ex) {
 				this.sendError('UserModuleError', ex);
@@ -819,11 +831,11 @@ class WebsocketConnection {
 			this.qinst.hostConn.sendAnswerNotice(this, msg);
 		}
 
+		this.player.hasAnswered = true;
 		if (quiz.settings.doesAdvanceTogether) {
 			// if all players receive the next question together, the server
-			// should not send the next question, but should instead give
-			// feedback on the answer
-			this.player.hasAnswered = true;
+			// should not send the next question to the player at this time,
+			// but should instead give feedback on the answer to the player
 			this.sendAnswerFeedback();
 		} else {
 			if (this.player.questionIndex < this.qinst.quiz.questions.length) {
@@ -903,7 +915,19 @@ class WebsocketConnection {
 	}
 
 	respondToEndAcknowledged(msg) {
-
+		if (this.qinst.phase === wss.QINST_PHASE_FINISHED) {
+			if (this.player.timeout !== null) {
+				clearTimeout(this.player.timeout);
+				this.player.timeout = null;
+			}
+		} else {
+			this.sendError('EndAcknowledgedWrongPhase',
+				'Ați încercat să anunțați că ați terminat jocul într-o fază '
+				+ 'a jocului în care acest lucru nu este posibil. '
+				+ 'Aceasta pare a fi o eroare; vă rugăm să '
+				+ 'contactați administratorul site-ului.'
+			);
+		}
 	}
 
 	async respondToLeave(msg) {
@@ -915,7 +939,7 @@ class WebsocketConnection {
 
 	/*** auxiliary methods ***/
 
-	startQuestion(questionIndex, player) {
+	startQuestion() {
 		var quiz = this.qinst.quiz;
 		var questionIndex;
 		if (quiz.settings.doesAdvanceTogether) {
@@ -934,10 +958,9 @@ class WebsocketConnection {
 		}
 
 		var finishTime = new Date();
-		finishTime.setSeconds(finishTime.getSeconds() + delta);
+		finishTime.setTime(finishTime.getTime() + delta * 1000);
 
 		if (quiz.settings.doesAdvanceTogether) {
-			this.hasAnwered = false;
 			clearTimeout(this.qinst.timeout);
 			this.qinst.finishTime = finishTime;
 			if (questionIndex < quiz.questions.length) {
@@ -963,7 +986,31 @@ class WebsocketConnection {
 		return [question, finishTime];
 	}
 
+	considerMultiBlankAnswers() {
+		for (let conn of this.qinst.conns) {
+			if ((conn !== this.qinst.hostConn
+					|| this.qinst.quiz.settings.doesHostPlay)
+					&& !conn.player.hasAnswered) {
+				conn.player.answers.push({
+					questionIndex: this.qinst.questionIndex,
+					answer: [],
+				});
+			}
+		}
+	}
+	
+	considerSingleBlankAnswer() {
+		if (!this.player.hasAnswered) {
+			this.player.answers.push({
+				questionIndex: this.qinst.questionIndex,
+				answer: [],
+			});
+		}
+	}
+
 	nextQuestionForAll() {
+		this.considerMultiBlankAnswers();
+
 		this.qinst.questionIndex += 1;
 		const [ question, finishTime ] = this.startQuestion();
 
@@ -971,7 +1018,7 @@ class WebsocketConnection {
 			conn.sendQuestion(question, finishTime);
 
 			if (this.qinst.quiz.settings.doesHostPlay ||
-					!(this.qinst.hostConn === conn)) {
+					this.qinst.hostConn !== conn) {
 				conn.player.hasAnswered = false;
 			}
 		}
@@ -979,15 +1026,32 @@ class WebsocketConnection {
 	}
 
 	nextQuestionForPlayer() {
+		this.considerSingleBlankAnswer();
+		
 		this.player.questionIndex += 1;
 		const [ question, finishTime ] = this.startQuestion();
+		this.player.hasAnswered = false;
 
 		this.sendQuestion(question, finishTime);
+	}
+
+	failPong() {
+		var reason;
+		if (this.player) {
+			reason = this.player.nickname + ' a ieșit din joc '
+			+ '(browser timeout)';
+		} else {
+			reason = "un jucător a ieșit din joc (browser timeout)";
+		}
+
+		this.ws.close(1001, reason);
 	}
 
 	endQinstForAll() {
 		if (this.qinst.phase === wss.QINST_PHASE_ACTIVE) {
 			this.qinst.phase = wss.QINST_PHASE_FINISHED;
+
+			this.considerMultiBlankAnswers();
 
 			for (let conn of this.qinst.conns) {
 				conn.sendQinstEnd();
@@ -1002,6 +1066,8 @@ class WebsocketConnection {
 
 	endQinstForPlayer() {
 		if (!this.player.hasFinished) {
+			this.considerSingleBlankAnswer();
+			
 			this.player.hasFinished = true;
 
 			nPlayersFinished = this.qinst.players.filter(
@@ -1261,19 +1327,68 @@ wss.on('connection', function (ws) {
 	var conn = new WebsocketConnection(ws);
 	wss.conns.push(conn);
 
+	ws.on('pong', function() {
+		clearTimeout(conn.failPongTimeout);
+		clearTimeout(conn.pingTimeout);
+		conn.failPongTimeout = null;
+		if (ws.readyState === ws.OPEN) {
+			// placing the check for an open connection both here and inside
+			// the timeout because the connection could close either before
+			// or during the timeout's existence
+			conn.pingTimeout = setTimeout(function() {
+				if (ws.readyState === ws.OPEN) {
+					ws.ping();
+					conn.failPongTimeout = setTimeout(conn.failPong.bind(conn),
+						config.pongWaitTime);
+				}
+			}, config.pingDelay);
+		}
+	});
+
+	conn.failPongTimeout = setTimeout(conn.failPong.bind(conn),
+		config.pongWaitTime);
+	ws.ping();
+
+	// The client should send a pong immediately after the server sends its
+	// ping.
+	// The server sends a ping pingDelay milliseconds after receiving a pong,
+	// then waits pongWaitTime before closing the connection
+
 	ws.on('message', function (msg) {
 		var ktime = new Date(); //current time
-		if (conn.throttleExpiry > ktime) {
-			conn.sendError('WebsocketError',
-				'Eroare websocket: prea multe mesaje într-un interval '
-				+ 'prea scurt de timp');
-			return;
+		if (conn.throttleExpiry !== null) {
+			if (conn.throttleExpiry > ktime) {
+				conn.sendError('WebsocketError',
+					"Eroare websocket: ați trimis prea multe mesaje într-un "
+					+ "interval prea scurt de timp");
+				return;
+			} else {
+				conn.throttleExpiry = null;
+			}
 		}
 		msg = JSON.parse(msg);
 
-		if (msg.type !== "create" && wss.doesThrottle) {
-			conn.throttleExpiry = ktime.setMilliseconds(
-				ktime.getMilliseconds() + config.throttleTime);
+		if (wss.doesThrottle) {
+			// if no throttling is occuring, add the current message's time
+			// to the list of times used in checking whether the connection
+			// should be throttled
+			conn.throttleChecks.push(new Date(ktime));
+			if (conn.throttleChecks.length > config.throttleCount) {
+				conn.throttleChecks.shift();
+				// check if the messages were sent in a sufficiently small
+				// time interval to warrant a throttle
+				var interval = conn.throttleChecks[
+					config.throttleCount - 1].getTime()
+					- conn.throttleChecks[0].getTime();
+				if (interval < config.throttleReqInterval) {
+					conn.throttleExpiry = new Date(ktime).setTime(
+					ktime.getTime() + config.throttleTime);
+					conn.sendError('WebsocketError',
+						"Eroare websocket: ați trimis prea multe mesaje "
+						+ "într-un interval prea scurt de timp");
+					return;
+				}
+			}
 		}
 
 		switch (msg.type) {
@@ -1304,9 +1419,6 @@ wss.on('connection', function (ws) {
 			case "nextQuestion":
 				conn.respondToNextQuestion(msg);
 				break;
-			case "endAcknowledged":
-				conn.respondToEndAcknowledged(msg);
-				break;
 			case "leave":
 				conn.respondToLeave(msg);
 				break;
@@ -1325,6 +1437,8 @@ wss.on('connection', function (ws) {
 		if (!reason) {
 			reason = ""; 
 		}
+		clearTimeout(conn.pingTimeout);
+		clearTimeout(conn.failPongTimeout);
 
 		if (conn.qinst) {
 			// remove the connection from the quiz's connection roster
