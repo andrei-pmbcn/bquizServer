@@ -1,8 +1,6 @@
 // the prep and ready phases of the game, when players join the game and prepare
 // to start it
 
-//[TODO] Fix the 1000-ms tests
-
 module.exports = function() {
 	deleteQinst = function(code) {
 		var qinst = wss.qinsts[code];
@@ -28,7 +26,7 @@ module.exports = function() {
 				wss.doesThrottle = false;
 				this.ws1.send(JSON.stringify({
 					type: 'create',
-					quizId: this.quizId,
+					identifier: this.quizId,
 					nickname: 'nick1',
 				}));
 			}.bind(this));
@@ -300,7 +298,7 @@ module.exports = function() {
 
 			this.ws1.send(JSON.stringify({
 				type: 'create',
-				quizId: this.quizId,
+				identifier: this.quizId,
 			}));
 		});
 
@@ -328,7 +326,7 @@ module.exports = function() {
 
 			this.ws1.send(JSON.stringify({
 				type: 'create',
-				quizId: this.quizId,
+				identifier: this.quizId,
 			}));
 		}); 
 
@@ -357,7 +355,7 @@ module.exports = function() {
 
 			this.ws1.send(JSON.stringify({
 				type:'create',
-				quizId: this.quizId,
+				identifier: this.quizId,
 			}));
 		});
 
@@ -672,18 +670,16 @@ module.exports = function() {
 
 				// welcome message for player 2
 				this.ws2.once('message', function(msg) {
-					this.ws1.close(1001);
-					var checkQinstNotDeleted = function() {
-						msg = JSON.parse(msg);
+					wss.once('connClosed', function() {
 						expect(wss.qinsts).to.have.property(this.code);
 						expect(this.qinst.conns)
 							.to.have.lengthOf(1);
 						expect(this.qinst.players)
 							.to.have.lengthOf(2);
 						done();
-					}.bind(this);
-				
-					setTimeout(checkQinstNotDeleted, 1000);
+					}.bind(this));
+
+					this.ws1.close(1001);
 				}.bind(this));
 
 				sendJoin2.bind(this)();
@@ -698,24 +694,20 @@ module.exports = function() {
 
 				// welcome message for player 2
 				this.ws2.once('message', function(msg) {
-					this.ws2.send(JSON.stringify({
-						type: 'leave'
-					}));
-				}.bind(this));
-				
-				this.ws2.on('close', function(msg) {
-					var checkQinstNotDeleted = function() {
+					wss.once('connClosed', function() {
 						expect(wss.qinsts).to.have.property(this.code);
 						expect(this.qinst.conns)
 							.to.have.lengthOf(1);
 						expect(this.qinst.players)
 							.to.have.lengthOf(1);
 						done();
-					}.bind(this);
+					}.bind(this));
 
-					setTimeout(checkQinstNotDeleted, 1000);
+					this.ws2.send(JSON.stringify({
+						type: 'leave'
+					}));
 				}.bind(this));
-
+				
 				sendJoin2.bind(this)();
 			}.bind(this));
 
@@ -1420,7 +1412,7 @@ module.exports = function() {
 					expect(msg.type).to.equal('qinstActive');
 					expect(msg.question.text).to.equal('question1');
 					expect(msg.question.points).to.equal(1);
-					expect(msg.question.answers[0]).to.have.property('text');
+					expect(msg.question.choices[0]).to.have.property('text');
 
 					this.clock.restore();
 					done();

@@ -81,7 +81,7 @@ module.exports = function() {
 
 			this.ws1.send(JSON.stringify({
 				type: 'create', 
-				quizId: this.quizId, 
+				identifier: this.quizId, 
 				nickname: 'nick1'
 			}));
 		}
@@ -379,14 +379,14 @@ module.exports = function() {
 					expect(msg.question.text).to.equal('question1');
 					expect(msg.question.points).to.equal(1);
 
-					var answers = msg.question.answers;
-					answers.sort((x, y) => (x.index - y.index));
-					expect(answers[0].index).to.equal(1);
-					expect(answers[0].text).to.equal('answer1.1');
-					expect(answers[1].index).to.equal(2);
-					expect(answers[1].text).to.equal('answer1.2');
-					expect(answers[2].index).to.equal(3);
-					expect(answers[2].text).to.equal('answer1.3');
+					var choices = msg.question.choices;
+					choices.sort((x, y) => (x.index - y.index));
+					expect(choices[0].index).to.equal(1);
+					expect(choices[0].text).to.equal('answer1.1');
+					expect(choices[1].index).to.equal(2);
+					expect(choices[1].text).to.equal('answer1.2');
+					expect(choices[2].index).to.equal(3);
+					expect(choices[2].text).to.equal('answer1.3');
 					
 					done();
 				}.bind(this);
@@ -403,14 +403,14 @@ module.exports = function() {
 					expect(msg.question.text).to.equal('question1');
 					expect(msg.question.points).to.equal(1);
 
-					var answers = msg.question.answers;
-					answers.sort((x, y) => (x.index - y.index));
-					expect(answers[0].index).to.equal(1);
-					expect(answers[0].text).to.equal('answer1.1');
-					expect(answers[1].index).to.equal(2);
-					expect(answers[1].text).to.equal('answer1.2');
-					expect(answers[2].index).to.equal(3);
-					expect(answers[2].text).to.equal('answer1.3');
+					var choices = msg.question.choices;
+					choices.sort((x, y) => (x.index - y.index));
+					expect(choices[0].index).to.equal(1);
+					expect(choices[0].text).to.equal('answer1.1');
+					expect(choices[1].index).to.equal(2);
+					expect(choices[1].text).to.equal('answer1.2');
+					expect(choices[2].index).to.equal(3);
+					expect(choices[2].text).to.equal('answer1.3');
 					
 					done();
 				}.bind(this);
@@ -427,14 +427,14 @@ module.exports = function() {
 					expect(msg.question.text).to.equal('question2');
 					expect(msg.question.points).to.equal(2);
 
-					var answers = msg.question.answers;
-					answers.sort((x, y) => (x.index - y.index));
-					expect(answers[0].index).to.equal(1);
-					expect(answers[0].text).to.equal('answer2.1');
-					expect(answers[1].index).to.equal(2);
-					expect(answers[1].text).to.equal('answer2.2');
-					expect(answers[2].index).to.equal(3);
-					expect(answers[2].text).to.equal('answer2.3');
+					var choices = msg.question.choices;
+					choices.sort((x, y) => (x.index - y.index));
+					expect(choices[0].index).to.equal(1);
+					expect(choices[0].text).to.equal('answer2.1');
+					expect(choices[1].index).to.equal(2);
+					expect(choices[1].text).to.equal('answer2.2');
+					expect(choices[2].index).to.equal(3);
+					expect(choices[2].text).to.equal('answer2.3');
 					
 					done();
 				}.bind(this);
@@ -455,14 +455,14 @@ module.exports = function() {
 					expect(msg.question.text).to.equal('question2');
 					expect(msg.question.points).to.equal(2);
 
-					var answers = msg.question.answers;
-					answers.sort((x, y) => (x.index - y.index));
-					expect(answers[0].index).to.equal(1);
-					expect(answers[0].text).to.equal('answer2.1');
-					expect(answers[1].index).to.equal(2);
-					expect(answers[1].text).to.equal('answer2.2');
-					expect(answers[2].index).to.equal(3);
-					expect(answers[2].text).to.equal('answer2.3');
+					var choices = msg.question.choices;
+					choices.sort((x, y) => (x.index - y.index));
+					expect(choices[0].index).to.equal(1);
+					expect(choices[0].text).to.equal('answer2.1');
+					expect(choices[1].index).to.equal(2);
+					expect(choices[1].text).to.equal('answer2.2');
+					expect(choices[2].index).to.equal(3);
+					expect(choices[2].text).to.equal('answer2.3');
 					
 					done();
 				}.bind(this);

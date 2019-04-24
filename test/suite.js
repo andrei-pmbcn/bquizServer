@@ -394,28 +394,28 @@ describe ("non-game", function() {
 			var question1 = questions[0];
 			expect(question1.points).to.equal(1);
 			expect(question1.text).to.equal('question1');
-			expect(question1.answers[0].text).to.equal('answer1.1');
-			expect(question1.answers[1].text).to.equal('answer1.2');
-			expect(question1.answers[2].text).to.equal('answer1.3');
-			expect(question1.answers).to.have.lengthOf(3);
+			expect(question1.choices[0].text).to.equal('answer1.1');
+			expect(question1.choices[1].text).to.equal('answer1.2');
+			expect(question1.choices[2].text).to.equal('answer1.3');
+			expect(question1.choices).to.have.lengthOf(3);
 			expect(question1.correctAnswer).to.deep.equal([1]);
 
 			var question2 = quiz.questions[1];
 			expect(question2.points).to.equal(2);
 			expect(question2.text).to.equal('question2');
-			expect(question2.answers[0].text).to.equal('answer2.1');
-			expect(question2.answers[1].text).to.equal('answer2.2');
-			expect(question2.answers[2].text).to.equal('answer2.3');
-			expect(question2.answers).to.have.lengthOf(3);
+			expect(question2.choices[0].text).to.equal('answer2.1');
+			expect(question2.choices[1].text).to.equal('answer2.2');
+			expect(question2.choices[2].text).to.equal('answer2.3');
+			expect(question2.choices).to.have.lengthOf(3);
 			expect(question2.correctAnswer).to.deep.equal([2]);
 
 			var question3 = quiz.questions[2];
 			expect(question3.points).to.equal(3);
 			expect(question3.text).to.equal('question3');
-			expect(question3.answers[0].text).to.equal('answer3.1');
-			expect(question3.answers[1].text).to.equal('answer3.2');
-			expect(question3.answers[2].text).to.equal('answer3.3');
-			expect(question3.answers).to.have.lengthOf(3);
+			expect(question3.choices[0].text).to.equal('answer3.1');
+			expect(question3.choices[1].text).to.equal('answer3.2');
+			expect(question3.choices[2].text).to.equal('answer3.3');
+			expect(question3.choices).to.have.lengthOf(3);
 			expect(question3.correctAnswer).to.deep.equal([3]);
 			
 			done();
@@ -423,7 +423,7 @@ describe ("non-game", function() {
 
 		this.ws1.send(JSON.stringify({
 			type: 'create',
-			quizId: this.quizId,
+			identifier: this.quizId,
 			nickname: 'nick1',
 		}));
 	});
@@ -452,6 +452,6 @@ describe ("non-game", function() {
 });
 
 describe("pre-game", pregame.bind(this));
-describe.only("in-game", ingame.bind(this));
+describe("in-game", ingame.bind(this));
 describe("post-game", postgame.bind(this));
 

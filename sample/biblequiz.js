@@ -33,6 +33,7 @@ async function fetchQuiz(quizIdentifier) {
 		.where({id: quizIdentifier});
 
 	quiz = {
+		identifier: quizIdentifier,
 		name: dbQuiz.name,
 		description: dbQuiz.description,
 		settings: {
@@ -50,8 +51,6 @@ async function fetchQuiz(quizIdentifier) {
 	dbQuestionLinks.sort((x,y)=>(x.idx > y.idx));
 	var questionIds = dbQuestionLinks.map((x)=>(x.bible_quiz_question_id));
 
-	//[TODO] Commentary
-
 	var dbQuestions = await knex('bible_quiz_question')
 		.select('id', 'question', 'a', 'b', 'c', 'answer', 'cancelled')
 		.whereIn('id', questionIds);
@@ -62,20 +61,22 @@ async function fetchQuiz(quizIdentifier) {
 			(x) => (x.id === dbQuestionLink.bible_quiz_question_id));
 
 		if (!dbQuestion.cancelled) {
-			let answers = [];
+			let choices = [];
 			let kAnswer = 1;
-			for (let answerIdx of ['a','b','c']) {
-				let answer = {
-					text: dbQuestion[answerIdx],
+			for (let choiceIdx of ['a','b','c']) {
+				let choice = {
+					identifier: null,
+					text: dbQuestion[choiceIdx],
 					index: kAnswer,
 				};
-				answers.push(answer);
+				choices.push(choice);
 				kAnswer++;
 			}
 			let question = {
+				identifier: dbQuestion.id,
 				index: dbQuestionLink.idx,
 				text: dbQuestion.question,
-				answers: answers,
+				choices: choices,
 				time: null,
 				isMultipleResponse: false,
 				correctAnswer: [parseInt(dbQuestion.answer)],

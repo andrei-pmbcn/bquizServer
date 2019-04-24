@@ -1,4 +1,6 @@
 # Bquiz
+**The framework is currently in pre-alpha and is not yet ready for production environments.**
+
 Bquiz is a multiplayer web-plugin framework that lets you create and play quizzes online. It features a server and web API written in node.js, using the `ws` websocket library and `express` http server framework, and comes with a javascript client written in Vue. The client may be attached to any webpage that includes the bquiz.js file and supplies a `<div id="bquiz"></div>` element anywhere on the page.
 
 
@@ -21,38 +23,57 @@ A default module, complete with a database for storing quizzes and their questio
 For the time being, the module `biblequiz.js` and its settings file `biblequiz.yml` constitute an example of how a quiz can be plugged into the framework.
 
 ### API classes
-##### Quiz
-`{name, description, settings, questions}`
-  - **name** (string): the name of the quiz
-  - **description** (string): a description of the quiz
-  - **settings** (object): a Settings object that contains the following:
-    - **time** (double): the time, in seconds, during which either the quiz (if *isTimePerQuestion* is set to `false`) or each particular question (if *isTimePerQuestion* is set to `true`) will take place
-    - **isTimePerQuestion** (bool): if true, the variable *time* refers to the time per question, else the variable *time* refers to the total time of the quiz
-    - **doesAdvanceTogether** (bool): if true, all players advance to the next question together, whether when the host sends the *nextQuestion* message or when the time to the next question expires. If false, each individual player advances to the next question as soon as they answer the current question.
-    - **doesHostPlay** (bool): if true, the game treats the host as a regular player, sending them questions etc.
+##### <a name="Quiz">Quiz</a>
+`{identifier, name, description, settings, questions}`
+- **identifier** (mixed): the identifier, such as a database id, that identifies the quiz; should be set to `null` when creating a new quiz.
+- **name** (string): the name of the quiz
+- **description** (string): a description of the quiz
+- **settings** ([QuizSettings](#QuizSettings) object): the settings of the quiz
+- **questions** (array of [Questions](#Question)): the questions in the quiz
+- **rating** (double): the overall rating of the quiz *TODO*
+- **ratingCount** (int): the number of people who rated the quiz *TODO*
+- **plays** (int): the number of times the quiz has been played to completion *TODO*
 
-  - **questions** (array of Questions): the questions in the quiz.
+#####<a name="QuizSettings">QuizSettings</a>
+The settings of a given quiz
+`{time, isTimePerQuestion, doesAdvanceTogether, doesHostPlay}`
+- **time** (double): the time, in seconds, during which either the quiz (if *isTimePerQuestion* is set to `false`) or each particular question (if *isTimePerQuestion* is set to `true`) will take place
+- **isTimePerQuestion** (bool): if true, the variable *time* refers to the time per question, else the variable *time* refers to the total time of the quiz
+- **doesAdvanceTogether** (bool): if true, all players advance to the next question together, whether when the host sends the *nextQuestion* message or when the time to the next question expires. If false, each individual player advances to the next question as soon as they answer the current question.
+- **doesHostPlay** (bool): if true, the game treats the host as a regular player, sending them questions etc.
 
-    Each Question object contains the following:
-    - **index** (int): the question's index, from 1 to the number of questions in the quiz; all questions should have a unique index. The quiz supplies the questions to the players in the order of their indices.
-    - **text** (string): the text of the question, ideally no greater than 200 characters
-    - **commentary** (string): a description of why the correct answer is in fact correct; set this to `null` to omit it
-    - **isMultipleResponse** (bool): whether the question allows more than one answer to be included in the correct answer
-    - **correctAnswer** (int or array of ints): the index or indices of all choices in the question that together comprise the correct answer
-    - **time** (double): the time, in seconds, for the question; if not set to `null`, it overrides the *time* variable in the *settings* object when *isTimePerQuestion* is set to `true`, otherwise it has no effect.
-    - **points** (double): the number of points awarded for answering the question correctly.
-    - **choices** (array of Choices): the available choices in the question.
+##### <a name="Question">Question</a>
+A question found within a given quiz
+`{identifier, index, text, commentary, isMultipleResponse, correctAnswer, time, points, choices}`
+- **identifier** (mixed): the question's identifier, such as a database id, that identifies the question; used when creating a new quiz to establish that it is using previously defined questions. Can be set to `null`to signify that the question is not currently in the database or other storage medium.
+- **index** (int): the question's index, from 1 to the number of questions in the quiz; all questions should have a unique index. The quiz supplies the questions to the players in the order of their indices.
+- **text** (string): the text of the question, ideally no greater than 200 characters
+- **commentary** (string): a description of why the correct answer is in fact correct; set this to `null` to omit it
+- **isMultipleResponse** (bool): whether the question allows more than one answer to be included in the correct answer
+- **correctAnswer** (int or array of ints): the index or indices of all choices in the question that together comprise the correct answer
+- **time** (double): the time, in seconds, for the question; if not set to `null`, it overrides the *time* variable in the *settings* object when *isTimePerQuestion* is set to `true`, otherwise it has no effect.
+- **points** (double): the number of points awarded for answering the question correctly.
+- **choices** (array of [Choices](#Choice)): the available choices in the question.
 
+##### <a name="Choice">Choice</a>
+A choice is one of the available options that players can tick when answering a given question.
+`{identifier, index, text}`
+- **identifier** (mixed): the choice's identifier, such as a database id, that identifies the choice; used when creating a new quiz to establish that one of its questions is using previously defined choices. Can be set to `null`to signify that the choice is not currently in the database or other storage medium.
+- **index** (int): the choice's index, ranging from 1 to the number of choices available for the question. All choices should have a unique index.
+- **text** (string): the text of the choice, ideally no greater than 100 characters
 
-      Each Choice object comprises one of the choices that the player can select when answering a question, and contains the following:
-      - **index** (int): the choice's index, ranging from 1 to the number of choices available for the question. All choices should have a unique index.
-      - **text** (string): the text of the choice, ideally no greater than 100 characters
-
-
+##### <a name="QuizSummary">QuizSummary</a>
+A summary of a given quiz, used when listing quizzes for prospective players
+`{identifier, name, rating, plays}`
+- **identifier** (mixed): the identifier, such as a database id, that identifies the quiz; should be set to `null` when creating a new quiz.
+- **name** (string): the name of the quiz
+- **description** (string): the description of the quiz
+- **rating** (double): the overall rating of the quiz *TODO*
+- **plays** (int): the number of times the quiz has been played to completion *TODO*
 
 ### API functions
 
-The following functions must be present in the API module:
+The following functions must be present in the API module. Be sure to provide exceptions for all undesired behavior.
 
 ##### verifyUser
 Verifies whether the specified username and password match a given user from the website's user directory (which can be, for example, a database table); returns true if so, otherwise returns false. Bquiz allows users to be logged in and provides various benefits for logged in users, and so requires this function to identify users who are logged in.
@@ -62,15 +83,90 @@ Verifies whether the specified username and password match a given user from the
 
 - return value (string | null): the username of the user being fetched, or `null`
 ##### fetchQuiz
-Fetches the Quiz object corresponding to a given quiz from the database or any other back-end medium used to store quizzes. The Quiz object should contain all information pertaining to the quiz, including its questions and its settings (see below).
+Fetches the complete Quiz object corresponding to a given quiz from the database or other storage medium.
 - parameters
-  - **quizId**: the variable (e.g. an integer database Id) of the quiz ; included in *create* client messages
+  - **identifier** (mixed): the variable (e.g. an integer database Id) that identifies the quiz
 
-- return value (object): a complete Quiz object
+- return value ([Quiz](#Quiz) object): a complete Quiz object
+
+##### fetchQuizList
+Fetches the summaries of a set of quizzes from the database, in descending order of the time of their creation, using the search criteria described below. If a search criterion is set to `null`, the function must ignore it. The summaries will be used when the player seeks prospective quizzes to play.
+- parameters
+  - **username** (string): search criterion; the username of the quizzes' creator
+  - **quizName** (string): search criterion; a part of the quiz's name.
+  - **description** (string): search criterion; a part of the quiz's description.
+  - **minRating** (double): search criterion; the minimum rating of the quizzes *TODO*
+  - **minPlays** (int): search criterion; the minimum number of plays of the quizzes *TODO*
+  - **offset** (int): the offset of the first quiz in the database or other storage medium
+  - **limit** (int): the number of quiz summaries to fetch
+
+- return value(Array of [QuizSummaries](#QuizSummary)): the summaries of the selected quizzes
+
+
+
+
+##### createQuiz
+Creates the quiz in the database or other storage medium and identifies the user as its owner.
+- parameters
+  - **quiz** ([Quiz](#Quiz)): the quiz to be created in the storage medium
+
+- return value (mixed): the variable (e.g. an integer database Id) that identifies the quiz
+
+##### updateQuiz
+Updates the quiz in the database or other storage medium if the user is its owner.
+- parameters
+  - **quiz** ([Quiz](#Quiz)): the quiz to be updated in the storage medium; the quiz's identifier attribute must not be null as it must reference the quiz to be updated. However, any other attributes of the quiz object may be undefined, and if they are, the updateQuiz function must ignore them.
+
+- return value: none
+
+##### deleteQuiz
+Deletes the quiz from the database or other storage medium if the user is its owner.
+- parameters
+  - **identifier** (mixed): the identifier, such as a database id, that identifies the quiz.
+
+##### debriefQuiz
+Updates the ratings and statistics of the quiz in the database or other storage medium after a given play-through of the quiz.
+- parameters
+  - **identifier** (mixed): the identifier, such as a database id, that identifies the quiz.
+ - **ratings** (Array of Ratings): the ratings for the quiz
+
+
 
 
 # Internals 
 The following is only of interest to those wishing to develop extensions for bquiz or develop bquiz itself; users who simply want to incorporate bquiz into their own projects should only ever need to use the API functions.
+
+Bquiz uses a websocket server for interacting with the players during a game, an XMPP server for handling player chatting and a REST server for saving and loading quizzes. All messages used by the websocket and REST servers employ the JSON format.
+
+## REST client messges
+The client sends these messages to the REST web service when loading and saving quizzes. All REST client messages contain the following:
+-**username** (string): the requester's username
+-**password** (string): the requester's password
+
+##### saveQuiz
+`{username, password, quizIdentifier, quiz}`
+-**identifier** (mixed): 
+-**quiz** (Quiz object): the quiz object to be saved
+
+Saves a quiz, invoking the createQuiz API method with the specified quiz object on the server side if the identifier is set to `null`, or updateQuiz on the server side otherwise.
+
+##### deleteQuiz
+`{username, password, quizIdentifier}`
+
+, invoking the deleteQuiz API method with 
+
+
+
+
+
+## REST server messages
+
+
+
+
+
+
+
 
 ## Websocket server Events
 Those who wish to extend the bquiz framework can use the various events emitted by its websocket server object.
@@ -89,13 +185,13 @@ triggered after the last player leaves the game and the server deletes the quiz 
 ##### connClosed
 the server has closed a connection and performed cleanup
 
-## Client messages
+## Websocket client messages
 The players' clients may send the following messages to the server. Below the name of each message shown here is a list of the message object's keys.
 
 ##### create
-`{type, quizId, username}`
+`{type, identifier, username}`
 - **type**: the string `'create'`
-- **quizId**: the identifier (e.g. a database id) of the quiz on which this game will be based
+- **identifier**: the identifier (e.g. a database id) of the quiz on which this game will be based
 - **nickname**: the nickname of the quiz instance's creator
 
 Sent when the host creates the new quiz instance.
@@ -163,7 +259,7 @@ Sent when the host advances the quiz, or the quiz advances automatically, to the
 Sent by the player when leaving the game.
 In response, the server removes the player from the player list; if the host leaves, the quiz instance enters hostless mode if no more players remain, trigger the *qinstDeletion* event.
 
-## Server messages
+## Websocket server messages
 The server may send the following messages to players. Below the name of each
 message shown here is a list of the message object's keys.
 
@@ -194,6 +290,7 @@ when the game is in the 'finished' phase:
 - **phase**: the string `'finished'`
 - **players**: the list of players currently taking part in the quiz
 - **settings**: the settings of the quiz  
+- **questions**: the questions of the quiz
 - **results**: the full quiz results object
 
 ##### code
@@ -302,6 +399,14 @@ notification that the server has closed its connection to the player
 
 message sent when an error has arisen
 
+## Websocket client classes
+
+##### Game
+A singleton object describing the state of an ongoing game.
+
+
+
+
 ## Websocket server classes
 
 ##### WebSocket.Server
@@ -318,6 +423,7 @@ a quiz instance, which contains all the information needed to run a single game
 - **preparedQuestions** (array of PreparedQuestions): all the questions in the quiz, not including their *commentary* and *answer.isCorrect* attributes. These can be sent to the players without any risk of cheating.
 - **conns** (array of Conns): all connection objects for the quiz instance
 - **players** (array of Players): all player objects for the quiz instance
+- **results** (Results object): the results of the quiz so far
 - **hostUsername** (string): the game host's username
 - **hostConn** (Conn): the game host's websocket connection
 - **isJoinable** (bool): whether the quiz instance can be joined

@@ -146,7 +146,7 @@ module.exports = function() {
 
 			this.ws1.send(JSON.stringify({
 				type: 'create',
-				quizId: this.quizId,
+				identifier: this.quizId,
 				nickname: 'nick1',
 			}));
 		}.bind(this);
@@ -184,69 +184,107 @@ module.exports = function() {
 		this.clock.tick(this.qinst.quiz.settings.time * 1000);
 	}
 
-	describe("players reconnecting in the finished phase", function() {
-		it("sends the welcome message for the finished phase to a "
-			+ "reconnecting player");
+	function expectForQinstEnd(msg) {
+		expect(msg.questions).to.have.lengthOf(3);
 
-		it("does not permit non-logged-in players to reconnect");
+		var questions = msg.questions.sort(
+			(x, y) => (x.index - y.index));
+		expect(questions[0].index).to.equal(1);
+		expect(questions[0].text).to.equal('question1');
+		expect(questions[0].choices).to.have.lengthOf(3);
+		expect(questions[0].correctAnswer).to.deep.equal([1]);
+		expect(questions[0].commentary).to.be.a.string;
+		expect(questions[0].points).to.equal(1);
+
+		expect(questions[1].index).to.equal(2);
+		expect(questions[1].text).to.equal('question2');
+		expect(questions[1].choices).to.have.lengthOf(3);
+		expect(questions[1].correctAnswer).to.deep.equal([2]);
+		expect(questions[1].commentary).to.be.a.string;
+		expect(questions[1].points).to.equal(2);
+
+		expect(questions[2].index).to.equal(3);
+		expect(questions[2].text).to.equal('question3');
+		expect(questions[2].choices).to.have.lengthOf(3);
+		expect(questions[2].correctAnswer).to.deep.equal([3]);
+		expect(questions[2].commentary).to.be.a.string;
+		expect(questions[2].points).to.equal(3);
+
+		var results = msg.results.sort(
+			(x, y) => (parseInt(x.nickname[4])
+				- parseInt(y.nickname[4])));
+		expect(results).to.have.lengthOf(2);
+		expect(results[0].nickname).to.equal('nick2');
+		expect(results[1].nickname).to.equal('nick3');
+
+		var answers = results[0].answers.sort(
+			(x, y) => (x.questionIndex - y.questionIndex));
+		expect(answers).to.have.lengthOf(3);
+		expect(answers[0].questionIndex).to.equal(1);
+		expect(answers[0].answer).to.deep.equal([1]);
+		expect(answers[1].questionIndex).to.equal(2);
+		expect(answers[1].answer).to.deep.equal([2]);
+		expect(answers[2].questionIndex).to.equal(3);
+		expect(answers[2].answer).to.deep.equal([1]);
+
+		expect(results[1].answers).to.have.lengthOf(3);
+		answers = results[1].answers.sort(
+			(x, y) => (x.questionIndex - y.questionIndex));
+		expect(answers[0].questionIndex).to.equal(1);
+		expect(answers[0].answer).to.deep.equal([1]);
+		expect(answers[1].questionIndex).to.equal(2);
+		expect(answers[1].answer).to.deep.equal([]);
+		expect(answers[2].questionIndex).to.equal(3);
+		expect(answers[2].answer).to.deep.equal([]);
+	}
+
+	describe("players reconnecting in the finished phase", function() {
+		it.only("sends the welcome message for the finished phase to a "
+				+ "reconnecting player", function(done) {
+			var cb = function() {
+				wss.once('connClosed', function() {
+					createWebsocket(function(ws) {
+						ws.once('message', function(msg) {
+							msg = JSON.parse(msg);
+							expect(msg.type).to.equal('welcome');
+							expect(msg.phase).to.equal(
+								wss.QINST_PHASE_FINISHED);
+							expect(msg.players).to.have.lengthOf(3);
+
+							expect(msg.settings).to.have.property(
+								'doesHostPlay');
+							expect(msg.settings).to.have.property(
+								'doesAdvanceTogether');
+							expect(msg.settings).to.have.property(
+								'isTimePerQuestion');
+							expect(msg.settings).to.have.property('time');
+
+							expectForQinstEnd(msg);
+							done();
+						}.bind(this));
+
+						ws.send(JSON.stringify({
+							type: 'join',
+							code: this.code,
+							username: 'user1',
+							password: 'pass1',
+							nickname: 'nick1',
+						}));
+					}.bind(this));
+				}.bind(this));
+
+				this.ws1.close(1001);
+			}.bind(this);
+
+			finishGame.bind(this)(cb);
+		});
+
+		//it("does not permit non-logged-in players to reconnect");
 
 	});
 
 
 	describe("quiz results", function() {
-		function expectForQinstEnd(msg) {
-			expect(msg.questions).to.have.lengthOf(3);
-
-			var questions = msg.questions.sort(
-				(x, y) => (x.index - y.index));
-			expect(questions[0].index).to.equal(1);
-			expect(questions[0].text).to.equal('question1');
-			expect(questions[0].answers).to.have.lengthOf(3);
-			expect(questions[0].correctAnswer).to.deep.equal([1]);
-			expect(questions[0].commentary).to.be.a.string;
-			expect(questions[0].points).to.equal(1);
-
-			expect(questions[1].index).to.equal(2);
-			expect(questions[1].text).to.equal('question2');
-			expect(questions[1].answers).to.have.lengthOf(3);
-			expect(questions[1].correctAnswer).to.deep.equal([2]);
-			expect(questions[1].commentary).to.be.a.string;
-			expect(questions[1].points).to.equal(2);
-
-			expect(questions[2].index).to.equal(3);
-			expect(questions[2].text).to.equal('question3');
-			expect(questions[2].answers).to.have.lengthOf(3);
-			expect(questions[2].correctAnswer).to.deep.equal([3]);
-			expect(questions[2].commentary).to.be.a.string;
-			expect(questions[2].points).to.equal(3);
-
-			var results = msg.results.sort(
-				(x, y) => (parseInt(x.nickname[4])
-					- parseInt(y.nickname[4])));
-			expect(results).to.have.lengthOf(2);
-			expect(results[0].nickname).to.equal('nick2');
-			expect(results[1].nickname).to.equal('nick3');
-
-			var answers = results[0].answers.sort(
-				(x, y) => (x.questionIndex - y.questionIndex));
-			expect(answers).to.have.lengthOf(3);
-			expect(answers[0].questionIndex).to.equal(1);
-			expect(answers[0].answer).to.deep.equal([1]);
-			expect(answers[1].questionIndex).to.equal(2);
-			expect(answers[1].answer).to.deep.equal([2]);
-			expect(answers[2].questionIndex).to.equal(3);
-			expect(answers[2].answer).to.deep.equal([1]);
-
-			expect(results[1].answers).to.have.lengthOf(3);
-			answers = results[1].answers.sort(
-				(x, y) => (x.questionIndex - y.questionIndex));
-			expect(answers[0].questionIndex).to.equal(1);
-			expect(answers[0].answer).to.deep.equal([1]);
-			expect(answers[1].questionIndex).to.equal(2);
-			expect(answers[1].answer).to.deep.equal([]);
-			expect(answers[2].questionIndex).to.equal(3);
-			expect(answers[2].answer).to.deep.equal([]);
-		}
 		
 		it("sends the quiz results to the host", function(done) {
 			var cb = function(msg) {
@@ -268,7 +306,7 @@ module.exports = function() {
 	
 	});
 
-	describe('ratings', function() {
+	describe('ratings and statistics', function() {
 		it("adds a quiz rating if the hasQuizRatings setting "
 			+ "is enabled");
 
@@ -288,5 +326,8 @@ module.exports = function() {
 			+ "player sends the question rating twice");
 
 		it("processes the ratings once the game has closed");
+
+		it("increments the number of plays of the quiz once the game "
+			+ "has closed");	
 	});
 }

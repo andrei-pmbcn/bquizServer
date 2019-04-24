@@ -45,6 +45,17 @@ class WebsocketConnection {
 	startQinst() {
 		this.qinst.phase = wss.QINST_PHASE_ACTIVE;	
 
+		// prepare the players' results
+		for (let player of this.qinst.players) {
+			if (!(player.nickname === this.qinst.hostNickname)
+					&& !this.qinst.quiz.settings.doesHostPlay) {
+				this.qinst.results.push({
+					nickname: player.nickname,
+					answers: player.answers,
+				});
+			}
+		}
+
 		var question;
 		var finishTime;
 		if (this.qinst.quiz.settings.doesAdvanceTogether) {
@@ -147,7 +158,8 @@ class WebsocketConnection {
 			response.question = preparedQuestion;
 
 		} else if (this.qinst.phase === wss.QINST_PHASE_FINISHED) {
-			//[TODO]
+			response.questions = this.qinst.quiz.questions;
+			response.results = this.qinst.results;
 		}
 
 		this.ws.send(JSON.stringify(response));	
@@ -342,21 +354,10 @@ class WebsocketConnection {
 			return;
 		}
 
-		var results = [];
-		for (let player of this.qinst.players) {
-			if (!(player.nickname === this.qinst.hostNickname)
-					&& !this.qinst.quiz.settings.doesHostPlay) {
-				results.push({
-					nickname: player.nickname,
-					answers: player.answers,
-				});
-			}
-		}
-
 		this.ws.send(JSON.stringify({
 			type: "qinstEnd",
 			questions: this.qinst.quiz.questions,
-			results: results,
+			results: this.qinst.results,
 		}));
 	}
 
@@ -389,12 +390,12 @@ class WebsocketConnection {
 
 	/*** server responses ***/
 
-	// create: {type, quizId}
+	// create: {type, identifier}
 	async respondToCreate(msg) {
 		const code = 10 ** 9 + parseInt((10 ** 10 - 10 ** 9) * Math.random());
 
 		try {
-			var quiz = await fetchQuiz(msg.quizId);
+			var quiz = await fetchQuiz(msg.identifier);
 
 		} catch (ex) {
 			this.sendError('UserModuleError', ex);
@@ -402,7 +403,7 @@ class WebsocketConnection {
 		}
 		try {
 			//validate the quiz obtained by fetchQuiz
-			this.validateQuiz(quiz);
+			this.validateQuiz(quiz, 'fetchQuiz');
 		} catch (ex) {
 			this.sendError('UserQuizValidationError', ex);
 		}
@@ -426,6 +427,7 @@ class WebsocketConnection {
 			preparedQuestions: preparedQuestions,
 			conns: [],
 			players: [],
+			results: [],
 			hostNickname: msg.nickname,
 			hostConn: this,
 			code: code,
@@ -784,7 +786,7 @@ class WebsocketConnection {
 			return;
 		}
 
-		// ensure that the complete answer does not contain multiple answers
+		// ensure that the complete answer does not contain multiple choices
 		// if the question is not a multiple response question
 		var question = quiz.questions.find(
 			(x) => (x.index === msg.questionIndex));
@@ -1085,7 +1087,7 @@ class WebsocketConnection {
 		}
 	}
 
-	//TODO send this to the client
+	//TODO include this in the client
 	calcTotal(player, doesCalcScore) {
 		var questions = this.qinst.quiz.questions;
 
@@ -1095,14 +1097,14 @@ class WebsocketConnection {
 		var total = 0;
 		for (let i = 0; i < questions.length; i++) {
 			let correctAnswer = questions[i].correctAnswer;
-			let nCorrectSubAnswers = 0;
+			let nCorrectChoices = 0;
 			if (answers[i].length === correctAnswer.length) {
-				for (subAnswer of answers[i]) {
-					if (correctAnswer.indexOf(subAnswer) !== -1) {
-						nCorrectSubAnswers++;
+				for (choice of answers[i]) {
+					if (correctAnswer.indexOf(choice) !== -1) {
+						nCorrectChoices++;
 					}
 				}
-				if (nCorrectSubAnswers === correctAnswer.length) {
+				if (nCorrectChoices === correctAnswer.length) {
 					if (doesCalcScore) {
 						total += questions[i].score;
 					} else {
@@ -1169,55 +1171,60 @@ class WebsocketConnection {
 		}
 	}
 
-	validateQuiz(quiz) {
-		var fq = 'fetchQuiz';
-		this.expectIsDefined(
-			quiz.settings.doesAdvanceTogether,
-			'quiz.settings.doesAdvanceTogether',
-			fq);
-		this.expectIsBoolean(
-			quiz.settings.doesAdvanceTogether,
-			'quiz.settings.doesAdvanceTogether',
-			fq);
+	validateQuiz(quiz, originFn) {
+		this.expectIsDefined(quiz.identifier, 'quiz.identifier', originFn);
 		
-		this.expectIsDefined(
-			quiz.settings.isTimePerQuestion,
+		this.expectIsDefined(quiz.settings.doesAdvanceTogether,
+			'quiz.settings.doesAdvanceTogether',
+			originFn);
+		this.expectIsBoolean(quiz.settings.doesAdvanceTogether,
+			'quiz.settings.doesAdvanceTogether',
+			originFn);
+		
+		this.expectIsDefined(quiz.settings.isTimePerQuestion,
 			'quiz.settings.isTimePerQuestion',
-			fq);
-		this.expectIsBoolean(
-			quiz.settings.isTimePerQuestion,
+			originFn);
+		this.expectIsBoolean(quiz.settings.isTimePerQuestion,
 			'quiz.settings.isTimePerQuestion',
-			fq);
+			originFn);
 
-		this.expectIsDefined(
-			quiz.settings.doesHostPlay,
+		this.expectIsDefined(quiz.settings.doesHostPlay,
 			'quiz.settings.doesHostPlay',
-			fq);
-		this.expectIsBoolean(
-			quiz.settings.doesHostPlay,
+			originFn);
+		this.expectIsBoolean(quiz.settings.doesHostPlay,
 			'quiz.settings.doesHostPlay',
-			fq);
+			originFn);
 	
-		this.expectIsDefined(quiz.settings.time, 'quiz.settings.time', fq);
-		this.expectIsNumber(quiz.settings.time, 'quiz.settings.time', fq);
+		this.expectIsDefined(quiz.settings.time, 'quiz.settings.time',
+			originFn);
+		this.expectIsNumber(quiz.settings.time, 'quiz.settings.time',
+			originFn);
 
 		var nQuestions = quiz.questions.length;
 		for (let i = 0; i < nQuestions; i++) {
 			let question = quiz.questions[i];
 			let questionStr = 'quiz.questions[' + i + ']';
 
-			this.expectIsDefined(question.text, questionStr + '.text', fq);
-			this.expectIsString(question.text, questionStr + '.text', fq);
+			this.expectIsDefined(question.identifier,
+				questionStr + '.identifier',
+				originFn);
 
-			this.expectIsDefined(question.index, questionStr + '.index', fq);
-			this.expectIsInteger(question.index, questionStr + '.index', fq);
+			this.expectIsDefined(question.text, questionStr + '.text',
+				originFn);
+			this.expectIsString(question.text, questionStr + '.text',
+				originFn);
+
+			this.expectIsDefined(question.index, questionStr + '.index',
+				originFn);
+			this.expectIsInteger(question.index, questionStr + '.index',
+				originFn);
 
 			// check that each question index falls in the correct range
 			if (question.index < 1 || question.index > nQuestions) {
 				throw "Validation error: the index (" + question.index
 					+ ") of quiz.questions[" + i + "] should be between "
 					+ "1 and " + nQuestions + " in the user-created "
-					+ fq + " function";
+					+ originFn + " function";
 			}
 
 			// check that each question index is unique
@@ -1225,34 +1232,36 @@ class WebsocketConnection {
 				.length > 1) {
 				throw "Validation error: multiple questions have the index "
 					+ question.index + "; each question's index should be "
-					+ "unique in the user-created " + fq + "function";
+					+ "unique in the user-created " + originFn + "function";
 			}
 
-			this.expectIsDefined(question.time, questionStr + '.time', fq);
-			this.expectIsNumber(question.time, questionStr + '.time', fq, true);
+			this.expectIsDefined(question.time, questionStr + '.time',
+				originFn);
+			this.expectIsNumber(question.time, questionStr + '.time',
+				originFn, true);
 
-			this.expectIsDefined(question.points, questionStr + '.points', fq);
-			this.expectIsNumber(question.points, questionStr + '.points', fq);
+			this.expectIsDefined(question.points, questionStr + '.points',
+				originFn);
+			this.expectIsNumber(question.points, questionStr + '.points',
+				originFn);
 		
-			this.expectIsDefined(
-				question.correctAnswer,
+			this.expectIsDefined(question.correctAnswer,
 				questionStr + '.correctAnswer',
-				fq);
-			this.expectIsArray(
-				question.correctAnswer,
+				originFn);
+			this.expectIsArray(question.correctAnswer,
 				questionStr + '.correctAnswer',
-				fq);
+				originFn);
 
 			if (question.correctAnswer.length === 0) {
 				throw "Validation error: " + questionStr + ".correctAnswer "
-					+ "should not be empty in the user-created " + fq
+					+ "should not be empty in the user-created " + originFn
 					+ "function";
 			}
 
-			if (question.correctAnswer.length > question.answers.length) {
+			if (question.correctAnswer.length > question.choices.length) {
 				throw "Validation error: " + questionStr + ".correctAnswer "
 					+ "should not contain more elements than there are "
-					+ "answers to its question in the user-created " + fq
+					+ "choices to its question in the user-created " + originFn
 					+ "function";
 			}
 
@@ -1261,11 +1270,11 @@ class WebsocketConnection {
 
 				// check that each entry in the correctAnswer array
 				// falls into the correct range
-				if (entry < 1 || entry > question.answers.length) {
+				if (entry < 1 || entry > question.choices.length) {
 					throw "Validation error: the index of " + questionStr
 						+ ".correctAnswer[" + i + "] should be between 1 and "
-						+ question.answers.length
-						+ "in the user-created " + fq + "function";
+						+ question.choices.length
+						+ "in the user-created " + originFn + "function";
 				}
 
 				// check that each entry in the correctAnswer array is unique
@@ -1276,48 +1285,54 @@ class WebsocketConnection {
 						+ "correctAnswer array for the question with index "
 						+ question.index + " have the same value; "
 						+ "each entry in a given correctAnswer array should be "
-						+ "unique in the user-created " + fq + "function";
+						+ "unique in the user-created " + originFn + "function";
 				}
 			}
 
-			this.expectIsDefined(
-				question.commentary,
+			this.expectIsDefined(question.commentary,
 				questionStr + '.commentary',
-				fq);
+				originFn);
 
-			this.expectIsString(
-				question.commentary,
+			this.expectIsString(question.commentary,
 				questionStr + '.commentary',
-				fq, true);
+				originFn, true);
 
-			let nAnswers = question.answers.length;
-			for (let j = 0; j < nAnswers; j++) {
-				let answer = question.answers[j];
-				let answerStr = 'quiz.question[' + i + '].answers[' + j + ']';
+			let nChoices = question.choices.length;
+			for (let j = 0; j < nChoices; j++) {
+				let choice = question.choices[j];
+				let choiceStr = 'quiz.question[' + i + '].choices[' + j + ']';
+
+				this.expectIsDefined(choice.identifier,
+					choiceStr + '.identifier',
+					originFn);
 				
-				this.expectIsDefined(answer.index, answerStr + '.index', fq);
-				this.expectIsInteger(answer.index, answerStr + '.index', fq);
+				this.expectIsDefined(choice.index, choiceStr + '.index',
+					originFn);
+				this.expectIsInteger(choice.index, choiceStr + '.index',
+					originFn);
 
-				// check that each answer index falls in the correct range
-				if (answer.index < 1 || answer.index > nAnswers) {
-					throw "Validation error: the index (" + answer.index
-						+ ") of " + answerStr + " should be between "
-						+ "1 and " + nAnswers + " in the user-created "
-						+ fq + " function";
+				// check that each choice index falls in the correct range
+				if (choice.index < 1 || choice.index > nChoices) {
+					throw "Validation error: the index (" + choice.index
+						+ ") of " + choiceStr + " should be between "
+						+ "1 and " + nChoices + " in the user-created "
+						+ originFn + " function";
 				}
 
-				// check that each answer index is unique
-				if (question.answers.filter((x) => (x.index === answer.index))
+				// check that each choice index is unique
+				if (question.choices.filter((x) => (x.index === choice.index))
 					.length > 1) {
-					throw "Validation error: multiple answers to the question "
+					throw "Validation error: multiple choices to the question "
 						+ "with index " + question.index + " have the index "
-						+ answer.index + "; each answer's index should be "
+						+ choice.index + "; each choice's index should be "
 						+ "unique within a given question in the "
-						+ "user-created " + fq + "function";
+						+ "user-created " + originFn + "function";
 				}
 
-				this.expectIsDefined(answer.text, answerStr + '.text', fq);
-				this.expectIsString(answer.text, answerStr + '.text', fq);
+				this.expectIsDefined(choice.text, choiceStr + '.text',
+					originFn);
+				this.expectIsString(choice.text, choiceStr + '.text',
+					originFn);
 			}
 		}
 	}
