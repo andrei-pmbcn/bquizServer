@@ -68,7 +68,7 @@ before(async function() {
 			is_time_per_question: true,
 			does_advance_together: true,
 			does_host_play: false,
-			})
+		})
 		.returning('id');
 
 	var user1Query = knex('user')

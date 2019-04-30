@@ -122,10 +122,20 @@ class WebsocketConnection {
 			return;
 		}
 
+		var players = [];
+		var host = null;
+		for (let player of this.qinst.players) {
+			players.push(player.nickname);
+			if (player.nickname === this.qinst.hostNickname) {
+				host = player.nickname;
+			}
+		}
+
 		var response = {
 			type: "welcome",
 			phase: this.qinst.phase,
-			players: this.qinst.players,
+			players: players,
+			host: host,
 			settings: this.qinst.quiz.settings,
 		};
 
@@ -361,7 +371,8 @@ class WebsocketConnection {
 		}));
 	}
 
-	sendError(errtype, errmsg, isLogged = true, doesDisplay = true) {
+	sendError(errtype, responseTo, errmsg,
+			isLogged = true, doesDisplay = true) {
 		var date = new Date();
 		errmsg = dateformat(date, "hh:MM:ss") + ": " + errtype + " - "
 			+ errmsg.toString();
@@ -370,6 +381,7 @@ class WebsocketConnection {
 			this.ws.send(JSON.stringify({
 				type: 'error',
 				errtype: errtype,
+				responseTo: responseTo,
 				error: errmsg,
 				doesDisplay: doesDisplay,
 			}));
@@ -398,14 +410,14 @@ class WebsocketConnection {
 			var quiz = await fetchQuiz(msg.identifier);
 
 		} catch (ex) {
-			this.sendError('UserModuleError', ex);
+			this.sendError('UserModuleError', 'create', ex);
 			return;
 		}
 		try {
 			//validate the quiz obtained by fetchQuiz
 			this.validateQuiz(quiz, 'fetchQuiz');
 		} catch (ex) {
-			this.sendError('UserQuizValidationError', ex);
+			this.sendError('UserQuizValidationError', 'create', ex);
 		}
 
 		// prepare the questions for sending them to the players
@@ -461,7 +473,7 @@ class WebsocketConnection {
 		// check that the player with this connection has not already joined 
 		if (this.qinst) {
 			this.sendError(
-				'AlreadyJoined',
+				'AlreadyJoined', 'join',
 				'Sunteți deja în joc. Nu vă puteți adăuga la joc de mai '
 				+ 'multe ori.'
 			);
@@ -473,7 +485,7 @@ class WebsocketConnection {
 
 		if (this.qinst === undefined) {
 			// the quiz instance does not exist
-			this.sendError('QuizInstanceNotFound',
+			this.sendError('QuizInstanceNotFound', 'join',
 				'Nu am putut găsi jocul cu codul specificat de dumneavoastră.'
 			)
 			return;
@@ -502,7 +514,7 @@ class WebsocketConnection {
 					this.player.username = msg.username;
 				}
 			} catch (ex) {
-				this.sendError('UserModuleError', ex);
+				this.sendError('UserModuleError', 'join', ex);
 				return;
 			}
 		}
@@ -539,7 +551,7 @@ class WebsocketConnection {
 			// ensure that the player entity has a nickname
 			if (!msg.nickname) {
 				this.sendError(
-					'NoNickname',
+					'NoNickname', 'join',
 					'Ați încercat să intrați în joc fără să aveți un nume de '
 					+ 'jucător. Vă rugăm să alegeți un nume.'
 				);
@@ -550,7 +562,7 @@ class WebsocketConnection {
 			for (let player of this.qinst.players) {
 				if (player.nickname === msg.nickname) {
 					this.sendError(
-						'InvalidNickname',
+						'InvalidNickname', 'join',
 						'Ați selectat un nume de jucător care este deja '
 						+ 'în folosință în joc. Vă rugăm să folosiți un alt '
 						+ 'nume pentru dumneavoastră.'
@@ -579,7 +591,7 @@ class WebsocketConnection {
 			return;
 		} else {
 			this.sendError(
-				'GameAlreadyStarted',
+				'GameAlreadyStarted', 'join',
 				'Jocul a început deja sau semnalul de începere a jocului a '
 				+ 'fost trimis. Deoarece nu păreți a fi autentificat cu un '
 				+ 'cont ce a participat la începerea jocului, nu puteți intra.'
@@ -594,7 +606,7 @@ class WebsocketConnection {
 				(x) => (x.nickname === msg.nickname));
 			if (player) {
 				if (player === this.player) {
-					this.sendError('SelfBoot',
+					this.sendError('SelfBoot', 'boot',
 						'Ați încercat să vă scoateți singur din joc. '
 						+ 'Aceasta pare a fi o eroare; vă rugăm să contactați '
 						+ 'administratorul site-ului.');
@@ -609,14 +621,14 @@ class WebsocketConnection {
 				conn.ws.close(1000, this.player.nickname
 					+ ' a scos din joc pe ' + player.nickname);
 			} else {
-				this.sendError('CannotFindBootTarget',
+				this.sendError('CannotFindBootTarget', 'boot',
 					'Numele jucătorului pe care ați încercat să îl scoateți '
 					+ 'din joc nu există. Aceasta pare a fi o eroare; vă '
 					+ 'rugăm să contactați administratorul site-ului.');
 				return;
 			}
 		} else {
-			this.sendError('UnauthorizedBoot',
+			this.sendError('UnauthorizedBoot', 'boot',
 				'Ați încercat să scoateți un jucător din joc, '
 				+ 'însă nu sunteți organizatorul jocului. Aceasta pare a fi '
 				+ 'o eroare; vă rugăm să contactați administratorul site-ului.'
@@ -627,7 +639,7 @@ class WebsocketConnection {
 
 	respondToReady(msg) {
 		if (this.player.isReady) {
-			this.sendError('AlreadyReady',
+			this.sendError('AlreadyReady', 'ready',
 				'Ați încercat să declarați că sunteți pregătit deși ați '
 				+ 'afirmat deja acest lucru.'
 				, false, false);
@@ -643,7 +655,7 @@ class WebsocketConnection {
 				conn.sendReady(this.player.nickname);
 			}
 		} else {
-			this.sendError('ReadyWrongPhase',
+			this.sendError('ReadyWrongPhase', 'ready',
 				'Ați încercat să anunțați că sunteți pregătit într-o fază a '
 				+ 'jocului în care acest lucru nu e posibil. '
 				+ 'Aceasta pare a fi o eroare; vă rugăm să contactați '
@@ -655,7 +667,7 @@ class WebsocketConnection {
 
 	respondToNotReady(msg) {
 		if (!this.player.isReady) {
-			this.sendError('AlreadyNotReady',
+			this.sendError('AlreadyNotReady', 'notReady',
 				'Ați încercat să declarați că nu mai sunteți pregătit deși ați '
 				+ 'afirmat deja acest lucru.'
 				, false, false);
@@ -671,7 +683,7 @@ class WebsocketConnection {
 				conn.sendNotReady(this.player.nickname);
 			}
 		} else {
-			this.sendError('NotReadyWrongPhase',
+			this.sendError('NotReadyWrongPhase', 'notReady',
 				'Ați încercat să anunțați că nu mai sunteți pregătit într-o '
 				+ 'fază a jocului în care acest lucru nu e posibil. '
 				+ 'Aceasta pare a fi o eroare; vă rugăm să contactați '
@@ -683,7 +695,7 @@ class WebsocketConnection {
 	//response to the request for starting the game
 	respondToStart(msg) {
 		if (this.qinst.phase !== wss.QINST_PHASE_PREP) {
-			this.sendError('StartWrongPhase',
+			this.sendError('StartWrongPhase', 'start',
 				'Ați încercat să începeți jocul după ce începerea jocului '
 				+ 'a fost aprobată. Aceasta pare a fi o eroare; vă '
 				+ 'rugăm să contactați administratorul site-ului.'
@@ -710,7 +722,7 @@ class WebsocketConnection {
 
 				wss.emit('qinstStartCountdown', this.qinst)
 			} else {
-				this.sendError('StartNotAllReady',
+				this.sendError('StartNotAllReady', 'start',
 					'Ați încercat să începeți jocul deși nu toți jucătorii '
 					+ 'sunt gata să înceapă. Aceasta pare a fi o eroare; vă '
 					+ 'rugăm să contactați administratorul site-ului.'
@@ -718,7 +730,7 @@ class WebsocketConnection {
 				return;
 			}
 		} else {
-			this.sendError('UnauthorizedStart',
+			this.sendError('UnauthorizedStart', 'start',
 				'Ați încercat să începeți jocul deși nu sunteți organizatorul '
 				+ 'jocului. Aceasta pare a fi o eroare; vă rugăm să '
 				+ 'contactați administratorul site-ului.'
@@ -730,7 +742,7 @@ class WebsocketConnection {
 	//response to the request for canceling the start of the game
 	respondToCancelStart(msg) {
 		if (this.qinst.phase !== wss.QINST_PHASE_READY) {
-			this.sendError('CanceledStartWrongPhase',
+			this.sendError('CanceledStartWrongPhase', 'cancelStart',
 				'Ați încercat să opriți începerea jocului după ce '
 				+ 'a fost deja oprită. Aceasta pare a fi o eroare; vă '
 				+ 'rugăm să contactați administratorul site-ului.'
@@ -752,7 +764,7 @@ class WebsocketConnection {
 
 			wss.emit('qinstStartCountdownCancelled', this.qinst);
 		} else {
-			this.sendError('UnauthorizedCancelStart',
+			this.sendError('UnauthorizedCancelStart', 'cancelStart',
 				'Ați încercat să opriți începerea jocul deși nu sunteți '
 				+ 'organizatorul jocului. Aceasta pare a fi o eroare; vă '
 				+ 'rugăm să contactați administratorul site-ului.'
@@ -769,7 +781,7 @@ class WebsocketConnection {
 			// finished phase, without having a chance to notify the player,
 			// between the time when the answer was sent and the server
 			// responded to it
-			this.sendError('AnswerWrongPhase',
+			this.sendError('AnswerWrongPhase', 'answer',
 				'Ați încercat să trimiteți un răspuns deși nu sunteți '
 				+ 'în faza activă a jocului.'
 				,false, false
@@ -778,7 +790,7 @@ class WebsocketConnection {
 		}
 
 		if (this.qinst.hostConn === this && !quiz.settings.doesHostPlay) {
-			this.sendError('UnauthorizedAnswer',
+			this.sendError('UnauthorizedAnswer', 'answer',
 				'Ați încercat să trimiteți un răspuns deși sunteți un '
 				+ 'observator. Aceasta pare a fi o eroare; vă rugăm '
 				+ 'să contactați administratorul site-ului.'
@@ -791,7 +803,7 @@ class WebsocketConnection {
 		var question = quiz.questions.find(
 			(x) => (x.index === msg.questionIndex));
 		if (msg.answer.length > 1 && !question.isMultipleResponse) {
-			this.sendError('AnswerNonMultipleResponse',
+			this.sendError('AnswerNonMultipleResponse', 'answer',
 				'Ați încercat să trimiteți un răspuns multiplu la o întrebare '
 				+ 'cu un singur răspuns. Aceasta pare a fi o eroare; vă rugăm '
 				+ 'să contactați administratorul site-ului.'
@@ -801,7 +813,7 @@ class WebsocketConnection {
 
 		//check whether the user has already answered
 		if (quiz.settings.doesAdvanceTogether && this.player.hasAnswered) {
-			this.sendError('AlreadyAnswered',
+			this.sendError('AlreadyAnswered', 'answer',
 				'Ați încercat să trimiteți același răspuns pentru aceeași '
 				+ 'întrebare din nou. Aceasta pare a fi o eroare; vă rugăm '
 				+ 'să contactați administratorul site-ului.');
@@ -815,7 +827,7 @@ class WebsocketConnection {
 				&& this.player.questionIndex === msg.questionIndex);
 
 		if (!isAnswerForCurrentQuestion) {
-			this.sendError('AnswerWrongQuestion',
+			this.sendError('AnswerWrongQuestion', 'answer',
 				'Ați încercat să trimiteți un răspuns pentru o altă '
 				+ 'întrebare decât cea actuală. Aceasta pare a fi o eroare; '
 				+ 'vă rugăm să contactați administratorul site-ului.');
@@ -850,7 +862,7 @@ class WebsocketConnection {
 
 	respondToNextQuestion(msg) {
 		if (!this.qinst.hostConn === this) {
-			this.sendError('UnauthorizedNextQuestion',
+			this.sendError('UnauthorizedNextQuestion', 'nextQuestion',
 				'Ați încercat să continuați cu următoarea întrebare '
 				+ 'deși nu sunteți organizatorul jocului. Aceasta pare a fi '
 				+ 'o eroare; vă rugăm să contactați administratorul site-ului.'
@@ -864,7 +876,7 @@ class WebsocketConnection {
 			// expired (and thus the quiz instance has entered the finished
 			// phase) and the moment when the host has received the qinstEnd
 			// message from the server
-			this.sendError('NextQuestionWrongPhase',
+			this.sendError('NextQuestionWrongPhase', 'nextQuestion',
 				'Ați încercat să anunțați că sunteți pregătit într-o fază a '
 				+ 'jocului în care acest lucru nu e posibil. ',
 				false, false
@@ -878,7 +890,7 @@ class WebsocketConnection {
 			// the question expired before the server received the nextQuestion
 			// message, and so it issued a new question in the interim.
 
-			this.sendError('NextQuestionWrongQuestion',
+			this.sendError('NextQuestionWrongQuestion', 'nextQuestion',
 				'Ați încercat să continuați cu următoarea întrebare deși '
 				+ 'aparent s-a trecut deja la următoarea întrebare.'
 				, false, false);
@@ -891,7 +903,7 @@ class WebsocketConnection {
 				if ((conn !== this.qinst.hostConn
 					|| this.qinst.quiz.settings.doesHostPlay)
 					&& !conn.player.hasAnswered) {
-					this.sendError('NextQuestionNotAllReady',
+					this.sendError('NextQuestionNotAllReady', 'nextQuestion',
 						'Ați încercat să continuați cu următoarea întrebare '
 						+ 'deși nu toți jucătorii au dat răspunsurile lor. '
 						+ 'Aceasta pare a fi o eroare; vă rugăm să contactați '
@@ -907,28 +919,12 @@ class WebsocketConnection {
 			}
 
 		} else {
-			this.sendError('NextQuestionUnavailable',
+			this.sendError('NextQuestionUnavailable', 'nextQuestion',
 				'Ați încercat să continuați cu următoarea întrebare '
 				+ 'deși opțiunea nu este disponibilă. Aceasta pare a fi '
 				+ 'o eroare; vă rugăm să contactați administratorul site-ului.'
 			);
 			return;
-		}
-	}
-
-	respondToEndAcknowledged(msg) {
-		if (this.qinst.phase === wss.QINST_PHASE_FINISHED) {
-			if (this.player.timeout !== null) {
-				clearTimeout(this.player.timeout);
-				this.player.timeout = null;
-			}
-		} else {
-			this.sendError('EndAcknowledgedWrongPhase',
-				'Ați încercat să anunțați că ați terminat jocul într-o fază '
-				+ 'a jocului în care acest lucru nu este posibil. '
-				+ 'Aceasta pare a fi o eroare; vă rugăm să '
-				+ 'contactați administratorul site-ului.'
-			);
 		}
 	}
 
@@ -1059,7 +1055,7 @@ class WebsocketConnection {
 				conn.sendQinstEnd();
 			}
 		} else {
-			this.sendError('QinstAlreadyEnded',
+			this.sendError('QinstAlreadyEnded', null,
 				'Ați încercat să încheiați jocul deși acesta era deja '
 				+ 'finalizat.', false, false)
 			return;
@@ -1080,7 +1076,7 @@ class WebsocketConnection {
 			
 			this.sendPlayerResults();
 		} else {
-			this.sendError('PlayerAlreadyFinished',
+			this.sendError('PlayerAlreadyFinished', null,
 				'Ați încercat să încheiați jocul deși acesta era deja '
 				+ 'finalizat pentru dumneavoastră.', false, false)
 			return;
@@ -1373,7 +1369,7 @@ wss.on('connection', function (ws) {
 		var ktime = new Date(); //current time
 		if (conn.throttleExpiry !== null) {
 			if (conn.throttleExpiry > ktime) {
-				conn.sendError('WebsocketError',
+				conn.sendError('WebsocketError', null,
 					"Eroare websocket: ați trimis prea multe mesaje într-un "
 					+ "interval prea scurt de timp");
 				return;
@@ -1398,7 +1394,7 @@ wss.on('connection', function (ws) {
 				if (interval < config.throttleReqInterval) {
 					conn.throttleExpiry = new Date(ktime).setTime(
 					ktime.getTime() + config.throttleTime);
-					conn.sendError('WebsocketError',
+					conn.sendError('WebsocketError', null,
 						"Eroare websocket: ați trimis prea multe mesaje "
 						+ "într-un interval prea scurt de timp");
 					return;
@@ -1438,10 +1434,10 @@ wss.on('connection', function (ws) {
 				conn.respondToLeave(msg);
 				break;
 			case "debugError":
-				conn.sendError('DebugError', 'sample error');
+				conn.sendError('DebugError', 'debugError', 'sample error');
 				break;
 			default:
-				conn.sendError('InvalidMessage',
+				conn.sendError('InvalidMessage', msg.type,
 					'tip de mesaj invalid: ' + msg.type 
 					+ '; mesajul întreg: ' + JSON.stringify(msg));
 				break;

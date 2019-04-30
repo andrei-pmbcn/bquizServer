@@ -31,6 +31,7 @@ module.exports = function() {
 					this.ws1.send(JSON.stringify({
 						type: 'join', 
 						code: this.code,
+						locale: 'ro',
 						username: 'user1',
 						password: 'pass1',
 						nickname: 'nick1',
@@ -39,6 +40,7 @@ module.exports = function() {
 					this.ws2.send(JSON.stringify({
 						type: 'join', 
 						code: this.code,
+						locale: 'ro',
 						username: 'user2',
 						password: 'pass2',
 						nickname: 'nick2',
@@ -46,6 +48,7 @@ module.exports = function() {
 					this.ws3.send(JSON.stringify({
 						type: 'join', 
 						code: this.code,
+						locale: 'ro',
 						rname: 'user3',
 						password: 'pass3',
 						nickname: 'nick3',
@@ -82,7 +85,8 @@ module.exports = function() {
 			this.ws1.send(JSON.stringify({
 				type: 'create', 
 				identifier: this.quizId, 
-				nickname: 'nick1'
+				locale: 'ro',
+				nickname: 'nick1',
 			}));
 		}
 
@@ -224,8 +228,9 @@ module.exports = function() {
 							msg = JSON.parse(msg);
 							expect(msg.type).to.equal('welcome');
 							expect(msg.phase).to.equal(wss.QINST_PHASE_ACTIVE);
-							expect(msg.players).to.deep.equal(
-								this.qinst.players);
+							expect(msg.players).to.have.lengthOf(3);
+							expect(msg.players).to.include.members(
+								['nick1', 'nick2', 'nick3']);
 							expect(msg.settings).to.deep.equal(
 								this.qinst.quiz.settings);
 							expect(msg.question).to.exist;
@@ -244,6 +249,7 @@ module.exports = function() {
 						ws.send(JSON.stringify({
 							type: 'join',
 							code: this.code,
+							locale: 'ro',
 							username: username,
 							password: password,
 						}));

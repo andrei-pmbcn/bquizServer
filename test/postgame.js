@@ -52,6 +52,7 @@ module.exports = function() {
 						this.ws1.send(JSON.stringify({
 							type: 'join',
 							code: this.code,
+							locale: 'ro',
 							username: 'user1',
 							password: 'pass1',
 							nickname: 'nick1',
@@ -62,6 +63,7 @@ module.exports = function() {
 						this.ws2.send(JSON.stringify({
 							type: 'join',
 							code: this.code,
+							locale: 'ro',
 							username: 'user2',
 							password: 'pass2',
 							nickname: 'nick2',
@@ -69,6 +71,7 @@ module.exports = function() {
 						this.ws3.send(JSON.stringify({
 							type: 'join',
 							code: this.code,
+							locale: 'ro',
 							username: 'user3',
 							password: 'pass3',
 							nickname: 'nick3',
@@ -148,6 +151,7 @@ module.exports = function() {
 				type: 'create',
 				identifier: this.quizId,
 				nickname: 'nick1',
+				locale: 'ro',
 			}));
 		}.bind(this);
 
@@ -239,7 +243,7 @@ module.exports = function() {
 	}
 
 	describe("players reconnecting in the finished phase", function() {
-		it.only("sends the welcome message for the finished phase to a "
+		it("sends the welcome message for the finished phase to a "
 				+ "reconnecting player", function(done) {
 			var cb = function() {
 				wss.once('connClosed', function() {
@@ -266,6 +270,7 @@ module.exports = function() {
 						ws.send(JSON.stringify({
 							type: 'join',
 							code: this.code,
+							locale: 'ro',
 							username: 'user1',
 							password: 'pass1',
 							nickname: 'nick1',

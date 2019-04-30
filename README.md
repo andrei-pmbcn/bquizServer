@@ -10,13 +10,20 @@ Bquiz is a multiplayer web-plugin framework that lets you create and play quizze
 
 
 
+## Front-end configuration functions
+Those who want to use the bquiz framework must use a set of functions that interface with the framework's front-end. These functions supply the client's username and password and provide configuration parameters *TODO*.
+
+##### setupUser
+Provides bquiz with the details of the end-user.
+- parameters:
+  - **username** (string): the end-user's username
+  - **password** (string): the end-user's password
+  - **locale** (string): an optional locale setting, 'en' by default *TODO*
+- return value: none
 
 
-
-
-
-## API module
-Those who want to incorporate the bquiz framework into their own quiz projects must write a node.js module containing functions specific to their own quiz. The framework calls the functions in this module in order to save and load quizzes to and from any databases, xml files and other storage media the developer has set up. 
+## Back-end API module
+Those who want to incorporate the bquiz framework into their own quiz projects must write a back-end node.js module containing functions specific to their own quiz. The framework calls the functions in this module in order to save and load quizzes to and from any databases, xml files and other storage media the developer has set up. 
 
 A default module, complete with a database for storing quizzes and their questions, will be provided at a later date.
 
@@ -48,10 +55,10 @@ A question found within a given quiz
 - **identifier** (mixed): the question's identifier, such as a database id, that identifies the question; used when creating a new quiz to establish that it is using previously defined questions. Can be set to `null`to signify that the question is not currently in the database or other storage medium.
 - **index** (int): the question's index, from 1 to the number of questions in the quiz; all questions should have a unique index. The quiz supplies the questions to the players in the order of their indices.
 - **text** (string): the text of the question, ideally no greater than 200 characters
-- **commentary** (string): a description of why the correct answer is in fact correct; set this to `null` to omit it
+- **commentary** (string | null): a description of why the correct answer is in fact correct; set this to `null` to omit it
 - **isMultipleResponse** (bool): whether the question allows more than one answer to be included in the correct answer
 - **correctAnswer** (int or array of ints): the index or indices of all choices in the question that together comprise the correct answer
-- **time** (double): the time, in seconds, for the question; if not set to `null`, it overrides the *time* variable in the *settings* object when *isTimePerQuestion* is set to `true`, otherwise it has no effect.
+- **time** (double | null): the time, in seconds, for the question; if not set to `null`, it overrides the *time* variable in the *settings* object when *isTimePerQuestion* is set to `true`, otherwise it has no effect.
 - **points** (double): the number of points awarded for answering the question correctly.
 - **choices** (array of [Choices](#Choice)): the available choices in the question.
 
@@ -67,6 +74,7 @@ A summary of a given quiz, used when listing quizzes for prospective players
 `{identifier, name, rating, plays}`
 - **identifier** (mixed): the identifier, such as a database id, that identifies the quiz; should be set to `null` when creating a new quiz.
 - **name** (string): the name of the quiz
+- **creator** (string | null): the username of the quiz's creator; can be set to `null` when the quiz is meant to be anonymous
 - **description** (string): the description of the quiz
 - **rating** (double): the overall rating of the quiz *TODO*
 - **plays** (int): the number of times the quiz has been played to completion *TODO*
@@ -193,6 +201,7 @@ The players' clients may send the following messages to the server. Below the na
 - **type**: the string `'create'`
 - **identifier**: the identifier (e.g. a database id) of the quiz on which this game will be based
 - **nickname**: the nickname of the quiz instance's creator
+- **locale**: the locale of the quiz instance's creator, indicating the language in which messages to the creator will be shown *TODO*
 
 Sent when the host creates the new quiz instance.
 In response, the server triggers the *qinstCreation* event and sends the quiz instance's code to the player, who must then sign in by sending a join message.
@@ -200,6 +209,7 @@ In response, the server triggers the *qinstCreation* event and sends the quiz in
 `{type, code, username, password, nickname}`
 - **type**: the string `'join'`
 - **code**: the nine-digit code referencing the quiz instance
+- **locale**: the locale of the player, indicating the language in which messages to the player will be shown *TODO*
 - **username**: the username of the person joining
 - **password**: the password of the person joining
 - **nickname**: the nickname used by the person joining
@@ -270,7 +280,8 @@ when the game is in the 'prep' phase:
 `{type, phase, players}`
 - **type**: the string `'welcome'`
 - **phase**: the string `'prep'`
-- **players**: the list of players currently taking part in the quiz
+- **players**: a list of the nicknames of all players currently taking part in the game
+- **host**: the nickname of the game's host
 - **settings**: the settings of the quiz
 
 when the game is in the 'active' phase:
@@ -391,9 +402,10 @@ notification that the game has ended, along with a list of results
 
 notification that the server has closed its connection to the player
 ##### error
-{type, errtype, error}
+{type, errtype, responseTo, error}
 -**type** (string): the string `'error'`
 -**errtype** (string): an identifier for the type of error being shown
+-**responseTo** (string | null): the message to which the error is a response; can be `null` when the error is not in response to a particular message
 -**error** (string): the full error message
 -**doesDisplay** (bool): whether to display the error to the user
 
@@ -433,21 +445,21 @@ a quiz instance, which contains all the information needed to run a single game
   - `QINST_PHASE_ACTIVE = 2`, signifying that the quiz is being played
   - `QINST_PHASE_FINISHED = 3`, signifying that the quiz has finished
 - **timeout** (Timeout): the timeout for either the qinstStart event, the nextQuestion event or the removal of inactive players after the qinstEnd event
-- **questionIndex** (int): the index of the quiz's current question; set to `null` unless doesAdvanceTogether is set to `true`
-- **finishTime** (double): the time until the current question expires for all players or the time until the quiz ends, depending on whether the quiz's *settings.isTimePerQuestion* value is `true` or `false`. Used only when *doesAdvanceTogether* is set to `true`, otherwise the value is set to `null`.
+- **questionIndex** (int | null): the index of the quiz's current question; set to `null` unless doesAdvanceTogether is set to `true`
+- **finishTime** (double | null): the time until the current question expires for all players or the time until the quiz ends, depending on whether the quiz's *settings.isTimePerQuestion* value is `true` or `false`. Used only when *doesAdvanceTogether* is set to `true`, otherwise the value is set to `null`.
 - **code** (int): the nine-digit code referencing the quiz instance
 
 ##### Player
 Any player, including the host, in a given quiz instance
 `{nickname, username, isReady}`
 - **nickname** (string): the nickname used throughout the quiz to identify the player
-- **username** (string): the player's username, or 'null' if no username exists
+- **username** (string | null): the player's username, or 'null' if the user is not logged in
 - **isReady** (bool): whether the player is ready for the game to start, or for the next question if already in the game
 - **hasAnswered** (bool): whether the player has answered the current question.
 - **hasFinished** (bool): whether the player has finished the quiz. Only used when doesAdvanceTogether is set to `false`.
 - **timeout** (Timeout): the timeout for the nextQuestion event, or the end-booting event (when the player has not acknowledged that the game has ended)
-- **currentQuestion** (int): the index of the current question being answered by the player; set to `null` if doesAdvanceTogether is set to `true`
-- **finishTime** (double): the time until the current question expires for the current player or the time until the quiz ends, depending on whether the quiz's *settings.isTimePerQuestion* value is `true` or `false`. Only used when *doesAdvanceTogether* is set to `false`, otherwise the value is set to `null`.
+- **currentQuestion** (int | null): the index of the current question being answered by the player; set to `null` if doesAdvanceTogether is set to `true`
+- **finishTime** (double | null): the time until the current question expires for the current player or the time until the quiz ends, depending on whether the quiz's *settings.isTimePerQuestion* value is `true` or `false`. Only used when *doesAdvanceTogether* is set to `false`, otherwise the value is set to `null`.
 - **answers** (array of Answers): the player's answers so far
 
 #### Conn

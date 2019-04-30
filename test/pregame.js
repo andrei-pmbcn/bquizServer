@@ -28,6 +28,7 @@ module.exports = function() {
 					type: 'create',
 					identifier: this.quizId,
 					nickname: 'nick1',
+					locale: 'ro',
 				}));
 			}.bind(this));
 		}.bind(this));
@@ -53,6 +54,7 @@ module.exports = function() {
 		this.ws1.send(JSON.stringify({
 			type:'join',
 			code: this.code,
+			locale: 'ro',
 			username: 'user1',
 			password: 'pass1',
 			nickname: 'nick1',
@@ -63,6 +65,7 @@ module.exports = function() {
 		this.ws2.send(JSON.stringify({
 			type:'join',
 			code: this.code,
+			locale: 'ro',
 			username: 'user2',
 			password: 'pass2',
 			nickname: 'nick2',
@@ -73,6 +76,7 @@ module.exports = function() {
 		this.ws3.send(JSON.stringify({
 			type:'join',
 			code: this.code,
+			locale: 'ro',
 			username: 'user3',
 			password: 'pass3',
 			nickname: 'nick3',
@@ -148,6 +152,7 @@ module.exports = function() {
 						ws.send(JSON.stringify({
 							type:'join',
 							code: this.code,
+							locale: 'ro',
 							username:'user2',
 							password:'pass2',
 						}));
@@ -189,6 +194,7 @@ module.exports = function() {
 						ws.send(JSON.stringify({
 							type: 'join',
 							code: this.code,
+							locale: 'ro',
 							username: 'user2',
 							password: 'pass2',
 							nickname: 'nick2',
@@ -227,6 +233,7 @@ module.exports = function() {
 						ws.send(JSON.stringify({
 							type:'join',
 							code: this.code,
+							locale: 'ro',
 							nickname: 'nick2'
 						}));
 					}.bind(this));
@@ -258,6 +265,7 @@ module.exports = function() {
 					ws.send(JSON.stringify({
 						type: 'join',
 						code: this.code,
+						locale: 'ro',
 						username: 'user1',
 						password: 'pass1',
 					}));
@@ -299,6 +307,8 @@ module.exports = function() {
 			this.ws1.send(JSON.stringify({
 				type: 'create',
 				identifier: this.quizId,
+				nickname: 'nick1',
+				locale: 'ro',
 			}));
 		});
 
@@ -327,6 +337,8 @@ module.exports = function() {
 			this.ws1.send(JSON.stringify({
 				type: 'create',
 				identifier: this.quizId,
+				nickname: 'nick1',
+				locale: 'ro',
 			}));
 		}); 
 
@@ -349,6 +361,7 @@ module.exports = function() {
 				this.ws1.send(JSON.stringify({
 					type: 'join',
 					code: msg.code,
+					locale: 'ro',
 					nickname: 'nick1',
 				}));
 			}.bind(this));
@@ -356,6 +369,8 @@ module.exports = function() {
 			this.ws1.send(JSON.stringify({
 				type:'create',
 				identifier: this.quizId,
+				nickname: 'nick1',
+				locale: 'ro',
 			}));
 		});
 
@@ -393,6 +408,7 @@ module.exports = function() {
 				this.ws1.send(JSON.stringify({
 					type: 'join',
 					code: this.code,
+					locale: 'ro',
 					nickname: 'nick2',
 				}));
 			}.bind(this);
@@ -425,6 +441,7 @@ module.exports = function() {
 				this.ws1.send(JSON.stringify({
 					type: 'join',
 					code: this.code,
+					locale: 'ro',
 					nickname: 'nick2',
 				}));
 			}.bind(this);
@@ -460,6 +477,7 @@ module.exports = function() {
 			this.ws1.send(JSON.stringify({
 				type:'join',
 				code: this.code,
+				locale: 'ro',
 				nickname: 'nick1',
 			}));
 		}
@@ -488,6 +506,7 @@ module.exports = function() {
 			this.ws1.send(JSON.stringify({
 				type: 'join',
 				code: 1,
+				locale: 'ro',
 				username: 'user1',
 				password: 'pass1',
 				nickname: 'nick1',
@@ -507,8 +526,9 @@ module.exports = function() {
 			});
 
 			this.ws1.send(JSON.stringify({
-				type:'join',
-				code:this.code,
+				type: 'join',
+				code: this.code,
+				locale: 'ro',
 				username: 'user1',
 				password: 'pass1',
 			}));
@@ -580,6 +600,7 @@ module.exports = function() {
 				this.ws2.send(JSON.stringify({
 					type:'join',
 					code: this.code,
+					locale: 'ro',
 					username: 'user2',
 					password: 'pass2',
 					nickname: 'nick1',
@@ -639,8 +660,9 @@ module.exports = function() {
 		it("closes the game, disconnecting all players, when the host "
 				+ "leaves", function(done) {
 			this.ws1.once('message', function(msg) {
-
 				// welcome message for player 2
+				msg = JSON.parse(msg);
+				expect(msg.type).to.equal('welcome');
 				this.ws2.once('message', function(msg) {
 					this.ws1.send(JSON.stringify({
 						type: 'leave'
@@ -667,8 +689,10 @@ module.exports = function() {
 		it("does not close the game when the host simply disconnects",
 				function(done) {
 			this.ws1.once('message', function(msg) {
-
 				// welcome message for player 2
+				msg = JSON.parse(msg);
+				expect(msg.type).to.equal('welcome');
+
 				this.ws2.once('message', function(msg) {
 					wss.once('connClosed', function() {
 						expect(wss.qinsts).to.have.property(this.code);
@@ -691,8 +715,10 @@ module.exports = function() {
 		it("does not close the game when a non-host player leaves",
 				function(done) {
 			this.ws1.once('message', function(msg) {
-
 				// welcome message for player 2
+				msg = JSON.parse(msg);
+				expect(msg.type).to.equal('welcome');
+
 				this.ws2.once('message', function(msg) {
 					wss.once('connClosed', function() {
 						expect(wss.qinsts).to.have.property(this.code);
@@ -761,6 +787,7 @@ module.exports = function() {
 				this.ws2.send(JSON.stringify({
 					type: 'join',
 					code: this.code,
+					locale: 'ro',
 					nickname: 'nick2',
 				}));
 			}.bind(this))
@@ -792,6 +819,7 @@ module.exports = function() {
 				this.ws2.send(JSON.stringify({
 					type: 'join',
 					code: this.code,
+					locale: 'ro',
 					username: 'user2',
 					password: 'pass2',
 					nickname: 'nick2',
