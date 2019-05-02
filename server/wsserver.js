@@ -1334,7 +1334,12 @@ class WebsocketConnection {
 	}
 }
 
-wss.on('connection', function (ws) {
+wss.on('listening', function() {
+	console.log('bquiz websocket server started for host ' + config.wsshost
+		+ ', port ' + config.wssport );
+});
+
+wss.on('connection', function(ws) {
 	var conn = new WebsocketConnection(ws);
 	wss.conns.push(conn);
 
@@ -1546,10 +1551,6 @@ wss.on('connection', function (ws) {
 		wss.emit('connClosed', conn);	
 	}.bind(this));
 
-});
-
-wss.on('listening', function() {
-	console.log('bquiz websocket server started');
 });
 
 module.exports = wss;
