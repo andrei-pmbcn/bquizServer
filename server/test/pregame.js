@@ -142,6 +142,12 @@ module.exports = function() {
 							expect(msg.type).to.equal('welcome');
 							expect(msg.phase).to.equal(wss.QINST_PHASE_PREP);
 							expect(msg.players).to.have.lengthOf(2);
+							var player1 = msg.players.find(
+								x => x.nickname === 'nick1');
+							expect(player1).to.exist;
+							var player2 = msg.players.find(
+								x => x.nickname === 'nick2');
+							expect(player2).to.exist;
 							expect(msg.settings)
 								.to.deep.equal(this.qinst.quiz.settings);
 							ws.close(1000);

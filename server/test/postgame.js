@@ -254,6 +254,15 @@ module.exports = function() {
 							expect(msg.phase).to.equal(
 								wss.QINST_PHASE_FINISHED);
 							expect(msg.players).to.have.lengthOf(3);
+							var player1 = msg.players.find(
+								x => x.nickname === 'nick1');
+							expect(player1).to.exist;
+							var player2 = msg.players.find(
+								x => x.nickname === 'nick2');
+							expect(player2).to.exist;
+							var player3 = msg.players.find(
+								x => x.nickname === 'nick3');
+							expect(player3).to.exist;
 
 							expect(msg.settings).to.have.property(
 								'doesHostPlay');

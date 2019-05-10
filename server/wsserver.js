@@ -1,4 +1,4 @@
-const WebSocket = require('ws');
+
 const yaml = require('js-yaml');
 const fs = require('fs');
 const bcrypt = require('bcrypt-nodejs');
@@ -29,7 +29,7 @@ wss.QINST_PHASE_FINISHED = 3;
 /*** custom methods ***/
 const { verifyUser, fetchQuiz } = require(config.apimodule);
 
-class WebsocketConnection {
+class WebSocketConnection {
 	constructor(ws) {
 		this.ws = ws;
 		this.throttleChecks = [];
@@ -125,7 +125,11 @@ class WebsocketConnection {
 		var players = [];
 		var host = null;
 		for (let player of this.qinst.players) {
-			players.push(player.nickname);
+			players.push({
+				nickname: player.nickname, 
+				isReady: player.isReady,
+				hasAnswered: player.hasAnswered,
+			});
 			if (player.nickname === this.qinst.hostNickname) {
 				host = player.nickname;
 			}
@@ -1340,7 +1344,7 @@ wss.on('listening', function() {
 });
 
 wss.on('connection', function(ws) {
-	var conn = new WebsocketConnection(ws);
+	var conn = new WebSocketConnection(ws);
 	wss.conns.push(conn);
 
 	ws.on('pong', function() {
