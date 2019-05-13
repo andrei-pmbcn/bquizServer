@@ -1,4 +1,4 @@
-
+const WebSocket = require('ws');
 const yaml = require('js-yaml');
 const fs = require('fs');
 const bcrypt = require('bcrypt-nodejs');
@@ -179,7 +179,7 @@ class WebSocketConnection {
 		this.ws.send(JSON.stringify(response));	
 	}
 
-	sendPlayerJoined(nickname, description) {
+	sendPlayerJoined(nickname, description, isReconnect) {
 		if (this.ws.readyState !== this.ws.OPEN) {
 			return;
 		}
@@ -188,6 +188,7 @@ class WebSocketConnection {
 			type: "playerJoined", 
 			nickname: nickname,
 			description: description,
+			isReconnect: isReconnect,
 		}));	
 	}
 
@@ -538,7 +539,7 @@ class WebSocketConnection {
 		if (isReconnect) {
 			for (let conn of this.qinst.conns) {
 				conn.sendPlayerJoined(this.player.nickname,
-					this.player.nickname + " s-a reconectat");
+					this.player.nickname + " s-a reconectat", true);
 			}
 			this.qinst.conns.push(this);
 
@@ -587,7 +588,7 @@ class WebSocketConnection {
 			this.qinst.players.push(this.player);
 			for (let conn of this.qinst.conns) {
 				conn.sendPlayerJoined(this.player.nickname,
-					this.player.nickname + " a venit în joc");
+					this.player.nickname + " a venit în joc", false);
 			}
 			this.qinst.conns.push(this);
 
