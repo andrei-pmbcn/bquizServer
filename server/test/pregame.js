@@ -35,11 +35,8 @@ module.exports = function() {
 	});
 
 	afterEach(function() {
-		if (this.ws1.readyState === this.ws1.OPEN) {
-			this.ws1.close(1000);
-		}
-		if (this.ws2.readyState === this.ws2.OPEN) {
-			this.ws2.close(1000);
+		for (conn of wss.conns) {
+			conn.ws.close(1000);
 		}
 
 		this.ws1.player = null;
@@ -264,6 +261,7 @@ module.exports = function() {
 
 						expect(conn).to.equal(this.qinst.hostConn);
 						expect(this.qinst.hostNickname).to.equal('nick1');
+
 						ws.close(1000);
 						done();
 					}.bind(this));

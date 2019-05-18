@@ -160,14 +160,8 @@ module.exports = function() {
 	});
 
 	afterEach(function() {
-		if (this.ws1.readyState === this.ws1.OPEN) {
-			this.ws1.close(1000);
-		}
-		if (this.ws2.readyState === this.ws2.OPEN) {
-			this.ws2.close(1000);
-		}
-		if (this.ws3.readyState === this.ws3.OPEN) {
-			this.ws3.close(1000);
+		for (conn of wss.conns) {
+			conn.ws.close(1000);
 		}
 
 		this.ws1.player = null;
@@ -263,6 +257,7 @@ module.exports = function() {
 							var player3 = msg.players.find(
 								x => x.nickname === 'nick3');
 							expect(player3).to.exist;
+							expect(msg.host).to.equal('nick1');
 
 							expect(msg.settings).to.have.property(
 								'doesHostPlay');

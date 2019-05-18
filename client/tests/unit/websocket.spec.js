@@ -1,7 +1,8 @@
 import { expect } from 'chai';
-//import sinon from 'sinon';
+import sinon from 'sinon';
 import Vuex from 'vuex';
 import Bus from 'vue-bus';
+//import MockBrowser from 'mock-browser';
 import { Server } from 'mock-socket';
 import { mount, createLocalVue } from '@vue/test-utils';
 
@@ -11,32 +12,27 @@ import { setupUser } from '@/api.js';
 import config from '@/config.js';
 import loadWebSocket from '@/websocket.js';
 
-before(function() {
-	this.defaultQuizSettings = {
-		time: 15.0,
-		isTimePerQuestion: true,
-		doesAdvanceTogether: true,
-		doesHostPlay: false,
-	}
-});
-
 describe.only("websocket messages", function() {
 	var msgWelcomeCommon = {
 		type: 'welcome',
 		players: [
 			{
 				nickname: 'nick1',
+				isPlaying: false,
 				isReady: false,
 				hasAnswered: false,
 				hasFinished: false,
 				isConnected: true,
+				answers: [],
 			},
 			{
 				nickname: 'nick2',
+				isPlaying: true,
 				isReady: false,
 				hasAnswered: false,
 				hasFinished: false,
 				isConnected: true,
+				answers: [],
 			},
 		],
 		host: 'nick1',
@@ -261,6 +257,7 @@ describe.only("websocket messages", function() {
 
 			var player = game.players.find(x => x.nickname === 'nick3');
 			expect(player).to.exist;
+			expect(player.isPlaying).to.be.true;
 			expect(player.isReady).to.be.false;
 			expect(player.hasAnswered).to.be.false;
 			expect(player.hasFinished).to.be.false;
@@ -430,15 +427,16 @@ describe.only("websocket messages", function() {
 		loadWebSocket(this.vm);
 	});
 
-	it.only("responds correctly to a qinstCancelCountdown message",
+	it("responds correctly to a qinstCancelCountdown message",
 			function(done) {
+		console.log('test');
 		this.vm.$bus.on('bus-qinst-cancel-countdown', function() {
 			var game = JSON.parse(JSON.stringify(this.vm.$store.state.game));
 		
 			expect(game.phase).to.equal('prep');
 
 			done();
-		}.bind(this))
+		}.bind(this));
 
 		this.wss.on('connection', socket => {
 			socket.send(JSON.stringify(msgWelcomePrep));
@@ -454,9 +452,183 @@ describe.only("websocket messages", function() {
 		loadWebSocket(this.vm);
 	});
 
+	it("responds correctly to a qinstActive message", function(done) {
+		var question = JSON.parse(JSON.stringify(msgWelcomeQuestions[0]));
+		delete question.correctAnswer;
+		delete question.commentary;
+		var finishTime = new Date((new Date()).getTime() + 15000);
+
+		this.vm.$bus.on("bus-qinst-active", function() {
+			var game = JSON.parse(JSON.stringify(this.vm.$store.state.game));
+			expect(game.currentQuestion).to.deep.equal(question);
+			expect(game.finishTime.toString()).to.equal(
+				JSON.parse(JSON.stringify(finishTime)));
+			expect(game.correctAnswer).to.deep.equal(
+				msgWelcomeQuestions[0].correctAnswer);
+			expect(game.commentary).to.deep.equal(
+				msgWelcomeQuestions[0].commentary);
+
+			done();
+		}.bind(this));
+
+		this.wss.on('connection', socket => {
+			socket.send(JSON.stringify(msgWelcomePrep));
+
+			socket.send(JSON.stringify({
+				type: 'qinstActive',
+				question: question,
+				finishTime: finishTime,
+				correctAnswer: msgWelcomeQuestions[0].correctAnswer,
+				commentary: msgWelcomeQuestions[0].commentary,
+			}));
+		});
+		loadWebSocket(this.vm);
+	});
+
+	it("responds correctly to an answerFeedback message", function(done) {
+		this.vm.$bus.on('bus-answer-feedback', function() {
+			var game = JSON.parse(JSON.stringify(this.vm.$store.state.game));
+			expect(game.correctAnswer).to.deep.equal(
+				msgWelcomeQuestions[0].correctAnswer);
+			expect(game.commentary).to.deep.equal(
+				msgWelcomeQuestions[0].commentary);
+
+			done();
+		}.bind(this));
+
+		this.wss.on('connection', socket => {
+			socket.send(JSON.stringify(msgWelcomeActive));
+
+			socket.send(JSON.stringify({
+				type: 'answerFeedback',
+				questionIndex: 1,
+				correctAnswer: msgWelcomeQuestions[0].correctAnswer,
+				commentary: msgWelcomeQuestions[0].commentary,
+			}));
+		});
+		this.vm.$store.commit('setNickname', 'nick2');
+		loadWebSocket(this.vm);
+	});
+
+	it("responds correctly to an answerNotice message", function(done) {
+		this.vm.$bus.on('bus-answer-notice', function() {
+			var game = JSON.parse(JSON.stringify(this.vm.$store.state.game));
+			var player = game.players.find(x => x.nickname === 'nick2');
+			var answer = player.answers.find(x => x.questionIndex === 1);
+			expect(answer.answer).to.deep.equal([1]);
+
+			done();
+		}.bind(this));
+
+		this.wss.on('connection', socket => {
+			socket.send(JSON.stringify(msgWelcomeActive));
+
+			socket.send(JSON.stringify({
+				type: 'answerNotice',
+				nickname: 'nick2',
+				questionIndex: 1,
+				answer: [1],
+			}));
+		});
+		loadWebSocket(this.vm);
+	});
+
+	it("responds correctly to a question message", function(done) {
+		var question = JSON.parse(JSON.stringify(msgWelcomeQuestions[1]));
+		delete question.correctAnswer;
+		delete question.commentary;
+		var finishTime = new Date((new Date()).getTime() + 15000);
+
+		this.vm.$bus.on('bus-question', function() {
+			var game = JSON.parse(JSON.stringify(this.vm.$store.state.game));
+
+			expect(game.currentQuestion).to.deep.equal(question);
+			expect(game.correctAnswer).to.deep.equal(
+				msgWelcomeQuestions[1].correctAnswer);
+			expect(game.commentary).to.deep.equal(
+				msgWelcomeQuestions[1].commentary);
+			expect(game.finishTime.toString()).to.equal(
+				JSON.parse(JSON.stringify(finishTime)));
+			done();
+		}.bind(this));
+	
+		this.wss.on('connection', socket => {
+			socket.send(JSON.stringify(msgWelcomeActive));
+
+			socket.send(JSON.stringify({
+				type: 'question',
+				question: question,
+				finishTime: finishTime,
+				correctAnswer: msgWelcomeQuestions[1].correctAnswer,
+				commentary: msgWelcomeQuestions[1].commentary,
+			}));
+		});
+		loadWebSocket(this.vm);
+	});
+
+	it("responds correctly to a playerResults message", function(done) {
+		var answers = [
+			{questionIndex: 1, answer: [1]},
+			{questionIndex: 2, answer: [2]},
+		];
+		
+		this.vm.$bus.on('bus-player-results', function() {
+			var game = JSON.parse(JSON.stringify(this.vm.$store.state.game));
+		
+			expect(game.questions).to.deep.equal(msgWelcomeQuestions);
+			expect(game.results).to.have.lengthOf(1);
+			expect(game.results[0].nickname).to.equal('nick2');
+			expect(game.results[0].answers).to.deep.equal(answers);
+
+			done();
+		}.bind(this));
+
+		this.wss.on('connection', socket => {
+			socket.send(JSON.stringify(msgWelcomeActive));
+
+			socket.send(JSON.stringify({
+				type: 'playerResults',
+				questions: msgWelcomeQuestions,
+				answers: answers,
+			}));
+		});
+		this.vm.$store.commit('setNickname', 'nick2');
+		loadWebSocket(this.vm);
+	});
+
+	it.only("responds correctly to a qinstEnd message", function(done) {
+		var results = [
+			{
+				nickname: 'nick2',
+				answers: [
+					{questionIndex: 1, answer: [1]},
+					{questionIndex: 2, answer: [2]},
+				]
+			}
+		];
+
+		this.vm.$bus.on('bus-qinst-end', function() {
+			var game = JSON.parse(JSON.stringify(this.vm.$store.state.game));
+		
+			expect(game.questions).to.deep.equal(msgWelcomeQuestions);
+			expect(game.results).to.deep.equal(results);
+
+			done();
+		}.bind(this));
+		
+		this.wss.on('connection', socket => {
+			socket.send(JSON.stringify(msgWelcomeActive));
+
+			socket.send(JSON.stringify({
+				type: 'qinstEnd',
+				questions: msgWelcomeQuestions,
+				results: results,
+			}));
+		});
+		loadWebSocket(this.vm);
+	});
+
+
 	//[TODO] account for games with different settings, e.g. where
 	// doesAdvanceTogether is set to false
-
-
 });
-

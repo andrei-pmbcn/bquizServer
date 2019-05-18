@@ -63,7 +63,7 @@
 			id="error-ws-closed"
 			class="form-text text-danger"
 			v-if="!flags.isWebSocketOpen"
-   		>Conexiunea websocket nu funcționează. Jocul este inaccesibil.</small>
+		>Conexiunea websocket nu funcționează. Jocul este inaccesibil.</small>
 	</div>
 </template>
 

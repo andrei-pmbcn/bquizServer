@@ -47,8 +47,7 @@ class WebSocketConnection {
 
 		// prepare the players' results
 		for (let player of this.qinst.players) {
-			if (!(player.nickname === this.qinst.hostNickname)
-					&& !this.qinst.quiz.settings.doesHostPlay) {
+			if (player.isPlaying) {
 				this.qinst.results.push({
 					nickname: player.nickname,
 					answers: player.answers,
@@ -144,8 +143,7 @@ class WebSocketConnection {
 		};
 
 		if (this.qinst.phase === wss.QINST_PHASE_ACTIVE) {
-			if (this === this.qinst.hostConn
-					&& !this.qinst.quiz.settings.doesHostPlay) {
+			if (!this.player.isPlaying) {
 				var question;
 				if (this.qinst.quiz.settings.doesAdvanceTogether) {
 					question = this.qinst.quiz.questions.find(
@@ -264,19 +262,15 @@ class WebSocketConnection {
 			return;
 		}
 
-		var isPlaying;
 		var correctAnswer;
 		var commentary;
-		if (this.qinst.hostConn === this
-				&& !this.qinst.quiz.settings.doesHostPlay) {
+		if (!this.player.isPlaying) {
 			var fullQuestion = this.qinst.quiz.questions.find(
 				(x) => (x.index === question.index));
 
-			isPlaying = false;
 			correctAnswer = fullQuestion.correctAnswer;
 			commentary = fullQuestion.commentary;
 		} else {
-			isPlaying = true;
 			correctAnswer = null;
 			commentary = null;
 		}
@@ -285,7 +279,6 @@ class WebSocketConnection {
 			type: "qinstActive",
 			question: question,
 			finishTime: finishTime,
-			isPlaying: isPlaying,
 			correctAnswer: correctAnswer, 
 			commentary: commentary,
 		}));
@@ -331,8 +324,7 @@ class WebSocketConnection {
 
 		var correctAnswer;
 		var commentary;
-		if (this.qinst.hostConn === this
-				&& !this.qinst.quiz.settings.doesHostPlay) {
+		if (!this.player.isPlaying) {
 			var fullQuestion = this.qinst.quiz.questions.find(
 				(x) => (x.index === question.index));
 
@@ -501,6 +493,7 @@ class WebSocketConnection {
 		this.player = {
 			username: null,
 			nickname: null,
+			isPlaying: true,
 			isReady: false,
 			hasAnswered: false,
 			hasFinished: false,
@@ -582,6 +575,10 @@ class WebSocketConnection {
 			// set them as the host
 			if (this.player.nickname == this.qinst.hostNickname) {
 				this.qinst.hostConn = this;
+
+				if (!this.qinst.quiz.settings.doesHostPlay) {
+					this.player.isPlaying = false;
+				}
 			}
 
 			// create the player entity
@@ -794,7 +791,7 @@ class WebSocketConnection {
 			return;
 		}
 
-		if (this.qinst.hostConn === this && !quiz.settings.doesHostPlay) {
+		if (!this.player.isPlaying) {
 			this.sendError('UnauthorizedAnswer', 'answer',
 				'Ați încercat să trimiteți un răspuns deși sunteți un '
 				+ 'observator. Aceasta pare a fi o eroare; vă rugăm '
@@ -905,9 +902,7 @@ class WebSocketConnection {
 		if (quiz.settings.doesAdvanceTogether) {
 			// check that all players have submitted their answers
 			for (let conn of this.qinst.conns) {
-				if ((conn !== this.qinst.hostConn
-					|| this.qinst.quiz.settings.doesHostPlay)
-					&& !conn.player.hasAnswered) {
+				if (conn.player.isPlaying && !conn.player.hasAnswered) {
 					this.sendError('NextQuestionNotAllReady', 'nextQuestion',
 						'Ați încercat să continuați cu următoarea întrebare '
 						+ 'deși nu toți jucătorii au dat răspunsurile lor. '
@@ -989,11 +984,9 @@ class WebSocketConnection {
 		return [question, finishTime];
 	}
 
-	considerMultiBlankAnswers() {
+	tryMultiBlankAnswers() {
 		for (let conn of this.qinst.conns) {
-			if ((conn !== this.qinst.hostConn
-					|| this.qinst.quiz.settings.doesHostPlay)
-					&& !conn.player.hasAnswered) {
+			if (conn.player.isPlaying && !conn.player.hasAnswered) {
 				conn.player.answers.push({
 					questionIndex: this.qinst.questionIndex,
 					answer: [],
@@ -1002,7 +995,7 @@ class WebSocketConnection {
 		}
 	}
 	
-	considerSingleBlankAnswer() {
+	trySingleBlankAnswer() {
 		if (!this.player.hasAnswered) {
 			this.player.answers.push({
 				questionIndex: this.qinst.questionIndex,
@@ -1012,7 +1005,7 @@ class WebSocketConnection {
 	}
 
 	nextQuestionForAll() {
-		this.considerMultiBlankAnswers();
+		this.tryMultiBlankAnswers();
 
 		this.qinst.questionIndex += 1;
 		const [ question, finishTime ] = this.startQuestion();
@@ -1020,8 +1013,7 @@ class WebSocketConnection {
 		for (let conn of this.qinst.conns) {
 			conn.sendQuestion(question, finishTime);
 
-			if (this.qinst.quiz.settings.doesHostPlay ||
-					this.qinst.hostConn !== conn) {
+			if (conn.player.isPlaying) {
 				conn.player.hasAnswered = false;
 			}
 		}
@@ -1029,7 +1021,7 @@ class WebSocketConnection {
 	}
 
 	nextQuestionForPlayer() {
-		this.considerSingleBlankAnswer();
+		this.trySingleBlankAnswer();
 		
 		this.player.questionIndex += 1;
 		const [ question, finishTime ] = this.startQuestion();
@@ -1054,7 +1046,7 @@ class WebSocketConnection {
 		if (this.qinst.phase === wss.QINST_PHASE_ACTIVE) {
 			this.qinst.phase = wss.QINST_PHASE_FINISHED;
 
-			this.considerMultiBlankAnswers();
+			this.tryMultiBlankAnswers();
 
 			for (let conn of this.qinst.conns) {
 				conn.sendQinstEnd();
@@ -1069,7 +1061,7 @@ class WebSocketConnection {
 
 	endQinstForPlayer() {
 		if (!this.player.hasFinished) {
-			this.considerSingleBlankAnswer();
+			this.trySingleBlankAnswer();
 			
 			this.player.hasFinished = true;
 
@@ -1375,7 +1367,7 @@ wss.on('connection', function(ws) {
 	// The server sends a ping pingDelay milliseconds after receiving a pong,
 	// then waits pongWaitTime before closing the connection
 
-	ws.on('message', function (msg) {
+	ws.on('message', function(msg) {
 		var ktime = new Date(); //current time
 		if (conn.throttleExpiry !== null) {
 			if (conn.throttleExpiry > ktime) {
@@ -1529,7 +1521,7 @@ wss.on('connection', function(ws) {
 					}
 
 					// turn off the player's ready status if possible
-					if ([wss.QINST_PHASE_PREP, wss.QINST_PHASE_ACTIVE]
+					if ([wss.QINST_PHASE_PREP, wss.QINST_PHASE_READY]
 							.indexOf(conn.qinst.phase) !== -1) {
 						conn.player.isReady = false;
 

@@ -34,13 +34,11 @@
 		></list-screen>
 		<quiz-screen
 			v-if="screen === SCREEN_QUIZ"
-			:quiz="quiz"
 			@visit-list="visitList"
 		></quiz-screen>
 		<game-screen
 			v-if="screen === SCREEN_GAME"
 			:qinstCode="qinstCode"
-			:game="game"
 			@visit-menu="visitMenu"
 		></game-screen>
 		<admin-screen
@@ -58,6 +56,9 @@
 //axios
 
 import 'bootstrap/dist/css/bootstrap.min.css';
+import $ from 'jquery/dist/jquery.slim.min.js';
+//import 'bootstrap/dist/js/bootstrap.min.js';
+
 import { mapState, mapMutations } from 'vuex';
 
 import MenuScreen from './components/MenuScreen.vue'
@@ -66,20 +67,18 @@ import QuizScreen from './components/QuizScreen.vue'
 import GameScreen from './components/GameScreen.vue'
 import AdminScreen from './components/AdminScreen.vue'
 
-import config from './config.js';
-
-function visitMenu(evt) {
-	console.log(evt);
-	console.log("visitMenu");
-	this.game = null;
+function visitMenu() {
 	this.screen = this.SCREEN_MENU;
 }
 
-function visitCreation(evt) {
-	console.log(evt);
+function visitCreation() {
 	this.qinstCode = null;
-	this.game = null;
 	this.screen = this.SCREEN_QUIZ;
+}
+
+function visitList() {
+	this.qinstCode = null;
+	this.screen = this.SCREEN_LIST;
 }
 
 function visitGame(evt) {
@@ -90,82 +89,24 @@ function visitGame(evt) {
 }
 
 function handleWelcome(msg) {
-	this.setGame({
-		phase: msg.phase,
-		players: msg.players,
-		settings: msg.settings,
-		currentQuestion: msg.question ? msg.question : null,
-		finishTime: msg.finishTime ? msg.finishTime : null,
-		correctAnswer: msg.correctAnswer ? msg.correctAnswer : null,
-		commentary: msg.commentary ? msg.commentary : null,
-		questions: msg.questions ? msg.questions : null,
-		results: msg.results ? msg.results : null,
-	});
 	this.$emit('visit-game', msg);
 }
+
+// when a message arrives from the server, the app as a whole should respond
+// to it, and it should emit events for the various components to respond to
 
 function handleError(msg) {
 	this.wsErrorMessages.push(msg);
 	if (this.wsErrorMessages.length > 0) {
-		$('#modal-error').modal('show');
+		//$('#modal-error').modal('show'); //[TODO]
 	}
 }
 
 function clearError() {
 	this.wsErrorMessages.shift();
 	if (this.wsErrorMessages.length === 0) {
-		$('#modal-error').modal('hide');
+		//$('#modal-error').modal('hide'); //[TODO]
 	}
-}
-
-function loadWebSocket() {
-	this.setFlag({key: 'isWebSocketOpen', value: false});
-
-	var serverStr;
-	if (window.location.protocol === 'https:') {
-		serverStr = 'wss://' + config.webSocketHost
-			+ ':' + config.webSocketPort + '/';
-	} else {
-		serverStr = 'ws://' + config.webSocketHost
-			+ ':' + config.webSocketPort + '/';
-	}
-
-	this.setWebSocket(new WebSocket(serverStr));
-	function onmessage(evt) {
-		const msg = JSON.parse(evt.data);
-		switch (msg.type) {
-			case 'welcome':
-				this.handleWelcome(msg);
-				break;
-			case 'error':
-				this.handleError(msg);
-				break;
-		}
-	}
-
-	function onopen() {
-		this.setFlag({key: 'isWebSocketOpen', value: true});
-	}
-
-	function onerror() {
-		this.handleError({
-			error: new Date().toTimeString().substring(0,8) + ": "
-				+ "A apărut o eroare în conexiunea websocket. Nu puteți "
-				+ "porni sau continua jocuri."
-		});
-
-		//[TODO] Do all websocket errors close the websocket connection?
-		this.setFlag({key: 'isWebSocketOpen', value: false});
-	}
-
-	function onclose() {
-		this.setFlag('isWebSocketOpen', false);
-	}
-
-	this.webSocket.onopen = onopen.bind(this);
-	this.webSocket.onmessage = onmessage.bind(this);
-	this.webSocket.onerror = onerror.bind(this);
-	this.webSocket.onclose = onclose.bind(this);
 }
 
 export default {
@@ -186,17 +127,22 @@ export default {
 		}
 	},
 	computed: {
-		...mapState(['webSocket', 'flags']),
+		//...mapState(['webSocket', 'flags']),
 		hasErrors: function() {
 			return this.wsErrorMessages.length > 0;
 		}
 	},
 	methods: {
-		...mapMutations(['setWebSocket', 'setGame', 'setFlag']),
+		...mapMutations([
+			'setWebSocket',
+			'configureWebSocket',
+			'setGame',
+			'setFlag',
+		]),
 		visitCreation,
 		visitGame,
 		visitMenu,
-		loadWebSocket,
+		visitList,
 
 		handleWelcome,
 		handleError,
@@ -209,10 +155,21 @@ export default {
 		'game-screen': GameScreen,
 		'admin-screen': AdminScreen,
 	},
-	mounted: function() {
-		this.loadWebSocket();
+	created() {
+		this.$bus.on('bus-ws-error', handleError);
+		this.$bus.on('bus-error', handleError);
+		this.$bus.on('bus-welcome', handleWelcome);
+	},
+
+	beforeDestroy() {
+		this.$bus.off('bus-ws-error', handleError);
+		this.$bus.off('bus-error', handleError);
+		this.$bus.off('bus-welcome', handleWelcome);
 	},
 }
+
+
+
 </script>
 
 <style>

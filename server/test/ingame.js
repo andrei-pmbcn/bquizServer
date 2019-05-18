@@ -37,6 +37,10 @@ module.exports = function() {
 						nickname: 'nick1',
 					}));
 				} else if (kMessages === 2) {
+					var player = this.qinst.players.find(
+						x => x.nickname === 'nick1');
+					expect(player.isPlaying).to.be.false;
+
 					this.ws2.send(JSON.stringify({
 						type: 'join', 
 						code: this.code,
@@ -55,6 +59,13 @@ module.exports = function() {
 					}));
 				} else if (kMessages === 4) {
 					//players joined
+					var player2 = this.qinst.players.find(
+						x => x.nickname === 'nick2');
+					expect(player2.isPlaying).to.be.true;
+					var player3 = this.qinst.players.find(
+						x => x.nickname === 'nick3');
+					expect(player3.isPlaying).to.be.true;
+					
 					this.conn1 = wss.conns.find(
 						(x) => (x.player.nickname === 'nick1'));
 					this.conn2 = wss.conns.find(
@@ -95,14 +106,8 @@ module.exports = function() {
 	});
 
 	afterEach(function() {
-		if (this.ws1.readyState === this.ws1.OPEN) {
-			this.ws1.close(1000);
-		}
-		if (this.ws2.readyState === this.ws2.OPEN) {
-			this.ws2.close(1000);
-		}
-		if (this.ws3.readyState === this.ws3.OPEN) {
-			this.ws3.close(1000);
+		for (conn of wss.conns) {
+			conn.ws.close(1000);
 		}
 
 		this.ws1.player = null;
@@ -238,6 +243,7 @@ module.exports = function() {
 							var player3 = msg.players.find(
 								x => x.nickname === 'nick3');
 							expect(player3).to.exist;
+							expect(msg.host).to.equal('nick1');
 
 							expect(msg.settings).to.deep.equal(
 								this.qinst.quiz.settings);
@@ -283,7 +289,9 @@ module.exports = function() {
 					+ "the active phase when the host is playing",
 					function(done) {
 				this.qinst.quiz.settings.doesHostPlay = true;
-				reconnect.bind(this)(done, this.ws2, 'user1', 'pass1', false);
+				this.conn1.player.isPlaying = true;
+				this.conn1.player.test = 'x';
+				reconnect.bind(this)(done, this.ws1, 'user1', 'pass1', false);
 			});
 		});
 		
@@ -293,7 +301,6 @@ module.exports = function() {
 					+ "the host is not playing", function(done) {
 				var cb = function(msg) {
 					expect(msg.type).to.equal('qinstActive');
-					expect(msg.isPlaying).to.be.false;
 					expect(msg.correctAnswer).to.deep.equal([1]);
 					expect(msg.commentary).to.equal('Geneza 1:1');
 					done();
@@ -307,7 +314,6 @@ module.exports = function() {
 					function(done) {
 				var cb = function(msg) {
 					expect(msg.type).to.equal('qinstActive');
-					expect(msg.isPlaying).to.be.true;
 					expect(msg.correctAnswer).to.be.null;
 					expect(msg.commentary).to.be.null;
 					done();
@@ -321,13 +327,13 @@ module.exports = function() {
 				+ "host is playing", function(done) {
 				var cb = function(msg) {
 					expect(msg.type).to.equal('qinstActive');
-					expect(msg.isPlaying).to.be.true;
 					expect(msg.correctAnswer).to.be.null;
 					expect(msg.commentary).to.be.null;
 					done();
 				}
 				
 				this.qinst.quiz.settings.doesHostPlay = true;
+				this.conn1.player.isPlaying = true;
 				startGame.bind(this)(cb);
 			});
 
@@ -380,6 +386,7 @@ module.exports = function() {
 				}.bind(this);
 
 				this.qinst.quiz.settings.doesHostPlay = true;
+				this.conn1.player.isPlaying = true;
 				startGame.bind(this)(cb1);
 			
 			});
@@ -881,6 +888,7 @@ module.exports = function() {
 				}.bind(this);
 
 				this.qinst.quiz.settings.doesHostPlay = true;
+				this.conn1.player.isPlaying = true;
 				startGame.bind(this)(cb1, this.ws2);
 			});
 
@@ -904,7 +912,7 @@ module.exports = function() {
 				}.bind(this);
 
 				this.qinst.quiz.settings.doesHostPlay = true;
-
+				this.conn1.player.isPlaying = true;
 				startGame.bind(this)(cb, this.ws2);
 			});
 
@@ -1057,6 +1065,7 @@ module.exports = function() {
 				expect(this.conn3.player.hasAnswered).to.be.false;
 
 				this.qinst.quiz.settings.doesHostPlay = true;
+				this.conn1.player.isPlaying = true;
 				startGame.bind(this)(cb1, this.ws2);
 			});
 		});

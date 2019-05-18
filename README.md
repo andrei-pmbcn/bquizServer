@@ -57,10 +57,13 @@ A question found within a given quiz
 - **text** (string): the text of the question, ideally no greater than 200 characters
 - **commentary** (string | null): a description of why the correct answer is in fact correct; set this to `null` to omit it
 - **isMultipleResponse** (bool): whether the question allows more than one answer to be included in the correct answer
-- **correctAnswer** (int or array of ints): the index or indices of all choices in the question that together comprise the correct answer
+- **correctAnswer** (array of ints): an array containing the index or indices of all choices in the question that together comprise the correct answer
 - **time** (double | null): the time, in seconds, for the question; if not set to `null`, it overrides the *time* variable in the *settings* object when *isTimePerQuestion* is set to `true`, otherwise it has no effect.
 - **points** (double): the number of points awarded for answering the question correctly.
 - **choices** (array of [Choices](#Choice)): the available choices in the question.
+
+##### <a name="PreparedQuestion">PreparedQuestion</a>
+A Question that has had its correctAnswer and commentary fields removed, so that it may be sent to the player without risk of cheating.
 
 ##### <a name="Choice">Choice</a>
 A choice is one of the available options that players can tick when answering a given question.
@@ -198,73 +201,73 @@ The players' clients may send the following messages to the server. Below the na
 
 ##### create
 `{type, identifier, username}`
-- **type**: the string `'create'`
-- **identifier**: the identifier (e.g. a database id) of the quiz on which this game will be based
-- **nickname**: the nickname of the quiz instance's creator
-- **locale**: the locale of the quiz instance's creator, indicating the language in which messages to the creator will be shown *TODO*
+- **type** (string): the string `'create'`
+- **identifier** (mixed): the identifier (e.g. a database id) of the quiz on which this game will be based
+- **nickname** (string): the nickname of the quiz instance's creator
+- **locale** (string): the locale of the quiz instance's creator, indicating the language in which messages to the creator will be shown *TODO*
 
 Sent when the host creates the new quiz instance.
 In response, the server triggers the *qinstCreation* event and sends the quiz instance's code to the player, who must then sign in by sending a join message.
 ##### join
 `{type, code, username, password, nickname}`
-- **type**: the string `'join'`
-- **code**: the nine-digit code referencing the quiz instance
-- **locale**: the locale of the player, indicating the language in which messages to the player will be shown *TODO*
-- **username**: the username of the person joining
-- **password**: the password of the person joining
-- **nickname**: the nickname used by the person joining
+- **type** (string): the string `'join'`
+- **code** (int): the nine-digit code referencing the quiz instance
+- **locale** (string): the locale of the player, indicating the language in which messages to the player will be shown *TODO*
+- **username** (string): the username of the person joining
+- **password** (string): the password of the person joining
+- **nickname** (string): the nickname used by the person joining
   
 Sent when the player joins a given quiz instance.
 In response, if no errors occur, the server adds the player to the game, or reconnects them if already added, then issues them a *welcome* message and sends all other players a *playerJoined* messsage. 
 ##### boot
 `{type, nickname}`
-- **type**: the string `'boot'`
-- **nickname**: the nickname of the player to be booted
+- **type** (string): the string `'boot'`
+- **nickname** (string): the nickname of the player to be booted
 
 Sent when the host requests for another player to be booted.
 In response, the server boots the target player if the player requesting the boot is the host, then broadcasts the *playerLeft* message to all players with 'booted by the game host' specified in the description.
 ##### ready
 `{type}`
-- **type**: the string `'ready'`
+- **type** (string): the string `'ready'`
   
 Sent when the player enters the ready state during game preparation.
 In response, the server registers the player as ready and sends the *playerReady* message to all players.
 ##### notReady
 `{type}`
-- **type**: the string `'notReady'`
+- **type** (string): the string `'notReady'`
 
 Sent when the player leaves the ready state during game preparation.
 In response, the server unregisters the player from being ready and sends the *playerNotReady* message to all players.
 ##### start
 `{type}`
-- **type**: the string `'start'`
+- **type** (string): the string `'start'`
 
 Sent when the game host starts the game.
 In response, the server checks whether the sender is the host, whether all players are ready and whether the game is in the prep phase; if all three are true, triggers the qinstStartCountdown event
 ##### cancelStart
 `{type}`
--**type**: the string `'cancelStart'`
+-**type** (string): the string `'cancelStart'`
 
 Sent when the game host cancels starting the game.
 In response, the server checks whether the sender is the host and whether the game is in the ready phase; if so, cancels the start countdown.
 ##### answer
 `{type, questionIndex, answer}`
-- **type**: the string `'answer'`
-- **questionIndex**: the index of the question being answered
-- **answer**: an array of the choices selected by the player that together comprise what the player considers the correct answer.
+- **type** (string): the string `'answer'`
+- **questionIndex** (int): the index of the question being answered
+- **answer** (array of ints): an array of the choices selected by the player that together comprise what the player considers the correct answer.
 
 Sent when a player answers a question.
 ##### nextQuestion
 `{type, questionIndex}`
--**type**: the string `'nextQuestion'`
--**questionIndex**: the index of the current, not the next question
+-**type** (string): the string `'nextQuestion'`
+-**questionIndex** (int): the index of the current, not the next question
 
 Sent when the host advances the quiz, or the quiz advances automatically, to the next question in quizzes where the setting `doesAdvanceTogether` is set to `true`, or when the player answers the question in quizzes where the setting `doesAdvanceTogether` is set to `false`.
 
 
 ##### leave
 `{type}`
-- **type**: the string `'leave'`
+- **type** )string): the string `'leave'`
   
 Sent by the player when leaving the game.
 In response, the server removes the player from the player list; if the host leaves, the quiz instance enters hostless mode if no more players remain, trigger the *qinstDeletion* event.
@@ -276,89 +279,91 @@ message shown here is a list of the message object's keys.
 ##### welcome
 the response to connections and reconnections.
 
-when the game is in the 'prep' phase:
-`{type, phase, players}`
-- **type**: the string `'welcome'`
-- **phase**: the string `'prep'`
-- **players**: a list of the nicknames of all players currently taking part in the game
-- **host**: the nickname of the game's host
-- **settings**: the settings of the quiz
+when the game is in the 'prep' or 'ready' phase:
+`{type, phase, players, host}`
+- **type** (string): the string `''welcome'`
+- **phase** (string): the string `'prep'`
+- **players** (array of ClientPlayers): the list of players currently taking part in the game
+- **host** (string): the nickname of the quiz's host
+- **settings** (QuizSettings object): the settings of the quiz
 
 when the game is in the 'active' phase:
-`{type, phase, players, question, finishTime}`
-- **type**: the string `'welcome'`
-- **phase**: the string `'active'`
-- **players**: the list of players currently taking part in the quiz
-- **settings**: the settings of the quiz
-- **question**: the current question in the quiz
-- **finishTime**: the time at which the current question or the quiz will expire
--**correctAnswer**: only sent to the host, and only if *doesHostPlay* is set to `false`. Contains the correct answer for the first question of the quiz.
--**commentary**: only sent to the host, and only if *doesHostPlay* is set to `false`. Contains the commentary for the first question of the quiz.
+`{type, phase, players, host, question, finishTime}`
+- **type** (string): the string `'welcome'`
+- **phase** (string): the string `'active'`
+- **players** (array of ClientPlayers): the list of players currently taking part in the quiz
+- **host** (string): the nickname of the quiz's host
+- **settings** (QuizSettings object): the settings of the quiz
+- **question** (PreparedQuestion object): the current question in the quiz
+- **finishTime** (Date object): the time at which the current question or the quiz will expire
+-**correctAnswer** (array of ints): only sent to the host, and only if *doesHostPlay* is set to `false`. Contains the correct answer for the first question of the quiz.
+-**commentary** (string): only sent to the host, and only if *doesHostPlay* is set to `false`. Contains the commentary for the first question of the quiz.
 
 when the game is in the 'finished' phase:
 `{type, phase, players, results}`
-- **type**: the string `'welcome'`
-- **phase**: the string `'finished'`
-- **players**: the list of players currently taking part in the quiz
-- **settings**: the settings of the quiz  
-- **questions**: the questions of the quiz
-- **results**: the full quiz results object
+- **type** (string): the string `'welcome'`
+- **phase** (string): the string `'finished'`
+- **players** (array of ClientPlayers): the list of players currently taking part in the quiz
+- **host** (string): the nickname of the quiz's host
+- **settings** (QuizSettings object): the settings of the quiz  
+- **questions** (array of Questions): the questions of the quiz
+- **results** (array of Results): the full quiz results
 
 ##### code
 `{type, code}`
-- **type**: the string `'code'`
-- **code**: the nine-digit code referencing the quiz instance
+- **type** (string): the string `'code'`
+- **code** (int): the nine-digit code referencing the quiz instance
 
 feedback in response to *create* messages
 ##### playerJoined
 `{type, nickname, description}`
-- **type**: the string `'playerJoined'`
-- **nickname**: the nickname of the player that has joined
-- **description**: a description of the circumstances of the joining event
+- **type** (string): the string `'playerJoined'`
+- **nickname** (string): the nickname of the player that has joined
+- **description** (string): a description of the circumstances of the joining event
+- **isReconnect** (bool): whether the joining is a reconnection
 
 notification to all players that another player has joined the game
 ##### playerLeft
 `{type, nickname, description, isDisconnect}` 
-- **type**: the string `'playerLeft'`
-- **nickname**: the nickname of the player that has left
-- **description**: a description of the circumstances of the leaving event
-- **isDisconnect**: whether the departure is owed to a disconnection instead of an actual leave message
+- **type** (string): the string `'playerLeft'`
+- **nickname** (string): the nickname of the player that has left
+- **description** (string): a description of the circumstances of the leaving event
+- **isDisconnect** (bool): whether the departure is owed to a disconnection instead of an actual leave message
 
 notification to all players that another player has left the game
 ##### playerReady
 `{type, nickname}`
--**type**: the string `'playerReady'`
--**nickname**: the nickname of the player that is now ready
+-**type** (string): the string `'playerReady'`
+-**nickname** (string): the nickname of the player that is now ready
 
 notification to all players that another player is ready
 ##### playerNotReady
 `{type, nickname}`
--**type**: the string `'playerNotReady'`
--**nickname**: the nickname of the player that is no longer ready
+-**type** (string): the string `'playerNotReady'`
+-**nickname** (string): the nickname of the player that is no longer ready
 
 notification to all players that another player is no longer ready
 ##### qinstStartCountdown
 `{type}`
--**type**: the string `'qinstStartCountdown'`
+-**type** (string): the string `'qinstStartCountdown'`
 
 notification to all players when the host triggers the qinstStartCountdown event
 #### qinstCancelCountdown
 `{type}`
--**type**: the string `'qinstNotReady'`
+-**type** (string): the string `'qinstNotReady'`
 
 notification to all players when the host triggers the qinstCancelCountdown event
 ##### qinstActive
-`{type, questionIndex, finishTime, isPlaying}`
+`{type, questionIndex, finishTime, correctAnswer, commentary}`
 -**type** (string): the string `'qinstActive'`
 -**question** (Question): the first question of the quiz
 -**finishTime** (Date): the time when the question or the quiz will expire
--**isPlaying**: whether the player is playing or simply spectating. If this is the host and the *doesHostPlay* setting is set to `false`, *isPlaying* is likewise set to `false`; otherwise, it is set to `true`.
 -**correctAnswer**: only sent to the host, and only if *doesHostPlay* is set to `false`. Contains the correct answer for the first question of the quiz.
 -**commentary**: only sent to the host, and only if *doesHostPlay* is set to `false`. Contains the commentary for the first question of the quiz.
 
 notification to all players when the game begins, also containing the first question in the quiz
 ##### answerFeedback
-`{type, question, correctAnswer, commentary}`
+`{type, questionIndex, correctAnswer, commentary}`
 -**type** (string): the string `'answerFeedback'`;
 -**questionIndex** (int): the index of the question
 -**correctAnswer** (array of ints): the indices of the choices that together comprise the correct answer for the quiz question
@@ -366,6 +371,7 @@ notification to all players when the game begins, also containing the first ques
 
 notification sent to the player after the player has answered a question
 ##### answerNotice
+`{type, nickname, questionIndex, answer}`
 -**type** (string): the string `'answerNotice'`;
 -**nickname** (string): the nickname of the player answering the question
 -**questionIndex** (int): the index of the question
@@ -373,7 +379,7 @@ notification sent to the player after the player has answered a question
 
 notification sent to the host, if the host is not playing, after a player has answered a question
 ##### question
-`{type, question, finishTime}`
+`{type, question, finishTime, correctAnswer, commentary}`
 -**type** (string): the string `'question'`
 -**question** (Question): the current question in the quiz
 -**finishTime** (Date): the time at which the current question or the quiz will expire
@@ -385,7 +391,7 @@ a new question sent during the game
 `{type, questions, results}`
 -**type** (string): the string `'playerResults'`
 -**questions** (array of Questions): a list of all the questions in the quiz, including their correct answers and commentary
--**answers** (array of playerAnswers): the player's answers
+-**answers** (array of Answers): the player's answers
 
 the player's results, sent when the player has finished the quiz in games where the players do not advance together
 ##### qinstEnd
@@ -402,7 +408,7 @@ notification that the game has ended, along with a list of results
 
 notification that the server has closed its connection to the player
 ##### error
-{type, errtype, responseTo, error}
+`{type, errtype, responseTo, error}`
 -**type** (string): the string `'error'`
 -**errtype** (string): an identifier for the type of error being shown
 -**responseTo** (string | null): the message to which the error is a response; can be `null` when the error is not in response to a particular message
@@ -415,8 +421,25 @@ message sent when an error has arisen
 
 ##### Game
 A singleton object describing the state of an ongoing game.
+`{phase, players, settings, currentQuestion, finishTime, correctAnswer, commentary, questions, results}`
+-**phase** (string): the current phase of the game. Can be one of `prep`, `ready`, `active` and `finished`.
+-**players** (array of ClientPlayers: the players currently taking part in the game.
+-**settings** (QuizSettings object): the game's settings.
+-**currentQuestion** (Question object): the player's current question.
+-**finishTime**:
+-**correctAnswer**: the correct answer to this question, if the player is an observer, or the correct answer to the previous question, if the player has answered and doesAdvanceTogether is set to true.
+-**commentary**: the commentary for the question, which explains why the correct answer is correct; shown if the player is an observer, or if the player has answered and doesAdvanceTogether is set to true.
+-**questions**: the set of questions in the game.
+-**results**: the game's results, shown during the *finished* phase.
 
-
+##### <a name="ClientPlayer">ClientPlayer</a>
+A player object used by the bquiz client
+`{nickname, isReady, hasAnswered, hasFinished, isConnected}`
+-**nickname** (string): the nickname used throughout the quiz to identify the player
+-**isReady** (bool): whether the player is ready for the game to start, or for the next question if already in the game
+-**hasAnswered** (bool): whether the player has answered the current question.
+-**hasFinished** (bool): whether the player has finished the quiz. Only used when doesAdvanceTogether is set to `false`.
+-**isConnected** (bool): whether the player is currently connected to the WebSocket server.
 
 
 ## Websocket server classes
@@ -435,7 +458,7 @@ a quiz instance, which contains all the information needed to run a single game
 - **preparedQuestions** (array of PreparedQuestions): all the questions in the quiz, not including their *commentary* and *answer.isCorrect* attributes. These can be sent to the players without any risk of cheating.
 - **conns** (array of Conns): all connection objects for the quiz instance
 - **players** (array of Players): all player objects for the quiz instance
-- **results** (Results object): the results of the quiz so far
+- **results** (array of Results): the results of the quiz so far
 - **hostUsername** (string): the game host's username
 - **hostConn** (Conn): the game host's websocket connection
 - **isJoinable** (bool): whether the quiz instance can be joined
@@ -451,7 +474,7 @@ a quiz instance, which contains all the information needed to run a single game
 
 ##### Player
 Any player, including the host, in a given quiz instance
-`{nickname, username, isReady}`
+`{nickname, username, isReady, hasAnswered, hasFinished, timeout, currentQuestion, finishTime, answers}`
 - **nickname** (string): the nickname used throughout the quiz to identify the player
 - **username** (string | null): the player's username, or 'null' if the user is not logged in
 - **isReady** (bool): whether the player is ready for the game to start, or for the next question if already in the game
@@ -481,6 +504,6 @@ The quiz results for a given player; does not include the questions and their co
 #### Answer
 A given player's answer to a given question
 `{questionIndex, answer}`
-  - **questionIndex**: the index of the question answered
-  - **answer**: the indices of the choices that together comprise the player's answer
+  - **questionIndex** (int): the index of the question answered
+  - **answer** (array of ints): the indices of the choices that together comprise the player's answer
 

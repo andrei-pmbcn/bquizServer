@@ -20,16 +20,13 @@ function createQinst() {
 	this.webSocket.send(JSON.stringify({
 		type: 'create',
 	}));
+
+	//disable the button until a response is given
 }
 
 export default {
 	name: 'menu-screen',
 	props: {
-		webSocket: {
-			type: Object,
-			required: true,
-		}
-
 	},
 	data: function() {
 		return {
@@ -38,6 +35,7 @@ export default {
 	},
 	methods: {
 		visitList,
+		createQinst,
 	},
 	components: {
 	},
