@@ -239,6 +239,9 @@ export default function(vm) {
 			case 'qinstEnd':
 				handleQinstEnd(msg, vm);
 				break;
+			case 'connectionClosed':
+				handleConnectionClosed(msg, vm);
+				break;
 			case 'error':
 				handleError(msg, vm);
 				break;

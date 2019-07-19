@@ -7,13 +7,19 @@ INSERT INTO bible_quiz (
 	("Întrebări despre Isus", "O serie de întrebări legate de Isus", 20,
 	false, true, false);
 
+
 SET @quiz_id = LAST_INSERT_ID();
 
-INSERT INTO bible_quiz_question_link (
-	bible_quiz_id, bible_quiz_question_id, idx, points, time) VALUES
-	(@quiz_id, 47, 1, 1, null),
-	(@quiz_id, 57, 2, 1, null),
-	(@quiz_id, 91, 3, 2, null),
-	(@quiz_id, 99, 4, 1, 15),
-	(@quiz_id, 113, 5, 1, 15);
+INSERT INTO bible_quiz_section (
+	bible_quiz_id, book, chapter, verset, n_questions) VALUES
+	(@quiz_id, 'Geneza', NULL, NULL, 3);
+	(@quiz_id, 'Geneza', 1, NULL, 1);
+	(@quiz_id, 'Geneza', 2, NULL, 2);
 
+--INSERT INTO bible_quiz_question_link (
+--	bible_quiz_id, bible_quiz_question_id, idx, points, time) VALUES
+--	(@quiz_id, 47, 1, 1, null),
+--	(@quiz_id, 57, 2, 1, null),
+--	(@quiz_id, 91, 3, 2, null),
+--	(@quiz_id, 99, 4, 1, 15),
+--	(@quiz_id, 113, 5, 1, 15);

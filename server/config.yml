@@ -1,8 +1,25 @@
 apimodule: ./sample/biblequiz.js # the path of the file that contains the api functions
 
+# REST server settings
+#rshost: localhost # REST server host
+webOriginHost: localhost # the hostname of the embedding server
+webOriginPort: 8080 # the port of the embedding server
+rsHttpPort: 8091 # REST http server port
+rsHttpsPort: 8092 # REST https server port
+privateKeyPath: ./sample/ssl/key.pem
+certificatePath: ./sample/ssl/cert.pem
+
+idleDuration: 3600000 # the time (in milliseconds) that the user or ip address must spend without sending a message to the server in order for that address to be removed from the sever's registry
+
 # websocket server settings
 wsshost: localhost # websocket server host
 wssport: 8090 # websocket server port
+pingDelay: 15000 # the time (in milliseconds) before the server sends each
+    # ping to a given client after receiving a pong signal
+pongWaitTime: 30000 # the time (in milliseconds) that the server may wait
+    # for the pong signal after sending a ping to a websocket
+
+# common REST and websocket server settings
 throttleReqInterval: 100 # the interval (in milliseconds) during which
     # throttleCount messages must be sent by a connection in order for 
     # the server to throttle that connection
@@ -10,8 +27,4 @@ throttleCount: 5 # the number of messages that must be sent in the
     # throttleTime period in order for the player to become throttled
 throttleDuration: 1000 # the duration (in milliseconds) of a player's
     # throttling, during which the player may not send messages
-pingDelay: 15000 # the time (in milliseconds) before the server sends each
-    # ping to a given client after receiving a pong signal
-pongWaitTime: 30000 # the time (in milliseconds) that the server may wait
-    # for the pong signal after sending a ping to a websocket
 

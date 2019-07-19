@@ -8,6 +8,8 @@ Bquiz is a multiplayer web-plugin framework that lets you create and play quizze
 
 \[Installation instructions\]
 
+SSL requirements for the REST server
+CORS notice for the REST server
 
 
 ## Front-end configuration functions

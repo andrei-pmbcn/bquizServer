@@ -93,11 +93,33 @@ function visitGame() {
 	}
 
 	if (isValid === false) {
+		this.$emit('error-visit-game');
 		return;
 	}
 
+	this.errorQinstCode = null;
+	this.errorQinstNickname = null;
+
+	var enterGameOrError = function(evt) {
+			var msg = JSON.parse(evt.data);
+			if (msg.type === 'welcome') {
+				// if the welcome message is received, enter the game screen
+				this.$webSocket.removeEventListener(
+					'message', enterGameOrError);
+				this.$emit('visit-game', msg);
+			} else if (msg.type === 'error' && msg.responseTo === 'join') {
+				// else send the error message
+				this.$webSocket.removeEventListener(
+					'message', enterGameOrError);
+				this.$emit('error', msg);
+			}
+		}.bind(this);
+
+	this.isLoading = true;
+	this.$webSocket.addEventListener('message', enterGameOrError);
+
 	// request the quiz instance from the websocket server
-	this.webSocket.send(JSON.stringify({
+	this.$webSocket.send(JSON.stringify({
 		type: 'join',
 		code: this.qinstCode,
 		locale: 'ro',
@@ -105,20 +127,6 @@ function visitGame() {
 		password: this.password,
 		nickname: this.qinstNickname,
 	}));
-
-	var enterGameOrError = function(msg) {
-		if (msg.type === 'welcome') {
-			// if the welcome message is received, enter the game screen
-			this.webSocket.removeEventListener('message', enterGameOrError);
-			this.$emit('visit-game', msg);
-		} else if (msg.type === 'error' && msg.responseTo === 'join') {
-			// else send the error message
-			this.webSocket.removeEventListener('message', enterGameOrError);
-			this.$emit('error', msg);
-		}
-	}
-
-	this.webSocket.addEventListener('message', enterGameOrError);
 }
 
 export default {

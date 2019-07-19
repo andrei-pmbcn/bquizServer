@@ -1,11 +1,11 @@
 import { expect } from 'chai';
-//import sinon from 'sinon';
+import sinon from 'sinon';
 import Vuex from 'vuex';
 import Bus from 'vue-bus';
 import { Server } from 'mock-socket';
 import { mount, createLocalVue } from '@vue/test-utils';
 
-import App from '@/App.vue';
+import MenuScreen from '@/components/MenuScreen.vue';
 import store from '@/store.js';
 import { setupUser } from '@/api.js';
 import config from '@/config.js';
@@ -20,134 +20,13 @@ before(function() {
 	}
 });
 
-describe.only("websocket messages", function() {
-	var msgWelcomeCommon = {
-		type: 'welcome',
-		players: [
-			{
-				nickname: 'nick1',
-				isReady: false,
-				hasAnswered: false,
-				hasFinished: false,
-				isConnected: true,
-			},
-			{
-				nickname: 'nick2',
-				isReady: false,
-				hasAnswered: false,
-				hasFinished: false,
-				isConnected: true,
-			},
-		],
-		host: 'nick1',
-		settings: {
-			time: 15,
-			isTimePerQuestion: true,
-			doesAdvanceTogether: true,
-			doesHostPlay: false,
-		},
-	};
-	
-	var msgWelcomeQuestions = [
-		{
-			identifier: 1,
-			index: 1,
-			text: 'question1',
-			correctAnswer: [1],
-			commentary: 'commentary1',
-			isMultipleResponse: false,
-			time: null,
-			points: 1,
-			choices: [
-				{
-					identifier: 1,
-					index: 1,
-					text: 'question1.choice1',
-				},
-				{
-					identifier: 2,
-					index: 2,
-					text: 'question1.choice2',
-				},
-			],
-		},
-		{
-			identifier: 2,
-			index: 2,
-			text: 'question2',
-			correctAnswer: [2],
-			commentary: 'commentary2',
-			isMultipleResponse: false,
-			time: null,
-			points: 2,
-			choices: [
-				{
-					identifier: 1,
-					index: 1,
-					text: 'question2.choice1',
-				},
-				{
-					identifier: 2,
-					index: 2,
-					text: 'question2.choice2',
-				},
-			],
-		}
-	]
-	var msgWelcomeCurrentQuestion = JSON.parse(JSON.stringify(
-		msgWelcomeQuestions[0]));
-	delete msgWelcomeCurrentQuestion.correctAnswer;
-	delete msgWelcomeCurrentQuestion.commentary;
-
-	var msgWelcomePrep = {
-		...msgWelcomeCommon,
-		phase: 'prep',
-	};
-
-	var msgWelcomeActive = {
-		...msgWelcomeCommon,
-		phase: 'active',
-		question: msgWelcomeCurrentQuestion,
-		finishTime: new Date(),
-		correctAnswer: [1],
-		commentary: 'commentary1',
-	};
-
-	var msgWelcomeCommonFinished = JSON.parse(JSON.stringify(msgWelcomeCommon));
-	msgWelcomeCommonFinished.players[0].hasFinished = true;
-	msgWelcomeCommonFinished.players[1].hasFinished = true;
-
-	var msgWelcomeFinished = {
-		...msgWelcomeCommonFinished,
-		phase: 'finished',
-		questions: msgWelcomeQuestions,
-		results: [
-			{
-				nickname: 'nick1',
-				answers: [],
-			},
-			{
-				nickname: 'nick2',
-				answers: [
-					{
-						questionIndex: 1,
-						answer: [1],
-					},
-					{
-						questionIndex: 2,
-						answer: [2],
-					},
-				],
-			}
-		],
-	}
-
+describe("MenuScreen.vue", function() {
 	beforeEach(function() {
 		var localVue = createLocalVue();
 		localVue.use(Vuex);
 		localVue.use(Bus);
 
-		this.wrapper = mount(App, {
+		this.wrapper = mount(MenuScreen, {
 			store,
 			localVue, 
 		});
@@ -158,304 +37,142 @@ describe.only("websocket messages", function() {
 	});
 
 	afterEach(function() {
-		if (this.vm.$webSocket) {
-			this.vm.$webSocket.close();
+		this.wss.stop();
+	});
+
+	function testVisitGame(done, isError = false, errorType = null) {
+		this.wss.on('connection', function(socket) {
+			socket.on('message', function(msg) {
+				socket.send(JSON.stringify({
+					type: 'welcome',
+				}));
+			});
+
+			this.wrapper.find('#btn-visit-game').trigger('click');
+		}.bind(this));
+
+		if (!isError) {
+			this.vm.$on('visit-game', function() {
+				done();
+			});
+		} else {
+			this.vm.$on('error-visit-game', function() {
+				if (errorType === 'code') {
+					expect(this.vm.$data.errorQinstCode).to.not.be.null;
+				} else if (errorType === 'nickname') {
+					expect(this.vm.$data.errorQinstNickname)
+						.to.not.be.null;
+				} else {
+					throw 'invalid errorType in testVisitGame';
+				}
+				done();
+			}.bind(this));
 		}
-		this.wss.close();
-	});
 
-	it("responds correctly to a 'welcome' message in the prep phase",
+		loadWebSocket(this.vm);
+	}
+
+	it("loads the creation screen when clicking the create button",
 			function(done) {
-
-		this.vm.$bus.on('bus-welcome', function() {
-			var game = JSON.parse(JSON.stringify(this.vm.$store.state.game));
-
-			expect(game.phase).to.equal(msgWelcomePrep.phase);
-			expect(game.players).to.deep.equal(msgWelcomePrep.players);
-			expect(game.host).to.equal(msgWelcomePrep.host)
-			expect(game.settings).to.deep.equal(msgWelcomePrep.settings);
-			expect(game.currentQuestion).to.be.null;
-			expect(game.finishTime).to.be.null;
-			expect(game.correctAnswer).to.be.null;
-			expect(game.commentary).to.be.null;
-			expect(game.questions).to.be.null;
-			expect(game.results).to.be.null;
-
+		this.vm.$on('visit-creation', function() {
 			done();
+		});
+
+		this.wrapper.find('#btn-visit-creation').trigger('click');
+	});
+
+	/*
+	it.only("does not load the creation screen repeatedly if the create "
+			+ "button is clicked repeatedly", function(done) {
+		var spy = sinon.spy();
+		this.vm.$on('visit-creation', spy);
+
+		this.wrapper.find('#btn-visit-creation').trigger('click');
+		this.wrapper.find('#btn-visit-creation').trigger('click');
+		setTimeout(function() {
+			expect(spy.calledOnce).to.be.true;
+			done();
+		}.bind(this), 100);
+	});
+	*/
+
+	it("loads the game screen after clicking the play button if all "
+			+ "requisites are met", function(done) {
+		this.wrapper.setData({
+			qinstCode: 1234567890,
+			qinstNickname: "nick1",
+		});
+
+		testVisitGame.bind(this)(done);
+	});
+
+	it("does not load the game screen repeatedly if the play "
+			+ "button is clicked repeatedly", function(done) {
+		this.wrapper.setData({
+			qinstCode: 1234567890,
+			qinstNickname: "nick1",
+		});
+		var spy = sinon.spy();
+		this.vm.$on('visit-game', spy);
+
+		this.wss.on('connection', function(socket) {
+			socket.on('message', function(msg) {
+				socket.send(JSON.stringify({
+					type: 'welcome',
+				}));
+			});
+
+			this.wrapper.find('#btn-visit-game').trigger('click');
+			this.wrapper.find('#btn-visit-game').trigger('click');
+			setTimeout(function() {
+				expect(spy.calledOnce).to.be.true;
+				done();
+			}.bind(this), 100);
 		}.bind(this));
 
-		this.wss.on('connection', socket => {
-			socket.send(JSON.stringify(msgWelcomePrep));
-		});
 		loadWebSocket(this.vm);
 	});
 
-	it("responds correctly to a 'welcome' message in the active phase",
+	it("does not load the game screen when the code has < 9 digits",
 			function(done) {
-		this.vm.$bus.on('bus-welcome', function() {
-			var game = JSON.parse(JSON.stringify(this.vm.$store.state.game));
-
-			expect(game.phase).to.equal(msgWelcomeActive.phase);
-			expect(game.players).to.deep.equal(msgWelcomeActive.players);
-			expect(game.host).to.equal(msgWelcomeActive.host)
-			expect(game.settings).to.deep.equal(msgWelcomeActive.settings);
-			expect(game.currentQuestion).to.deep.equal(
-				msgWelcomeActive.question);
-			expect(game.finishTime.toString()).to.equal(
-				JSON.parse(JSON.stringify(
-					msgWelcomeActive.finishTime)).toString());
-			expect(game.correctAnswer).to.deep.equal(
-				msgWelcomeActive.correctAnswer);
-			expect(game.commentary).to.equal(msgWelcomeActive.commentary);
-			expect(game.questions).to.be.null;
-			expect(game.results).to.be.null;
-
-			done();
-		}.bind(this));
-
-		this.wss.on('connection', socket => {
-			socket.send(JSON.stringify(msgWelcomeActive));
+		this.wrapper.setData({
+			qinstCode: 12345,
+			qinstNickname: "nick1",
 		});
-		loadWebSocket(this.vm);
-	});
-
-	it("responds correctly to a 'welcome' message in the finished phase",
-			function(done) {
-		this.vm.$bus.on('bus-welcome', function() {
-			var game = JSON.parse(JSON.stringify(this.vm.$store.state.game));
-
-			expect(game.phase).to.equal(msgWelcomeFinished.phase);
-			expect(game.players).to.deep.equal(msgWelcomeFinished.players);
-			expect(game.host).to.equal(msgWelcomeFinished.host)
-			expect(game.settings).to.deep.equal(msgWelcomeFinished.settings);
-			expect(game.finishTime).to.be.null;
-			expect(game.correctAnswer).to.be.null;
-			expect(game.commentary).to.be.null;
-			expect(game.questions).to.deep.equal(msgWelcomeFinished.questions);
-			expect(game.results).to.deep.equal(msgWelcomeFinished.results);
-
-			done();
-		}.bind(this));
-
-		this.wss.on('connection', socket => {
-			socket.send(JSON.stringify(msgWelcomeFinished));
-		});
-		loadWebSocket(this.vm);
-	});
-
-	it("responds correctly to a 'code' message", function(done) {
-		this.vm.$bus.on('bus-code', function() {
-			done();
-		}.bind(this));
-
-		this.wss.on('connection', socket => {
-			socket.send(JSON.stringify({type: 'code', code: 123456789}));
-		});
-		loadWebSocket(this.vm);
-	});
-
-	it("responds correctly to a 'playerJoined' message when not "
-			+ "reconnecting", function(done) {
-		this.vm.$bus.on('bus-player-joined', function() {
-			var game = JSON.parse(JSON.stringify(this.vm.$store.state.game));
-
-			var player = game.players.find(x => x.nickname === 'nick3');
-			expect(player).to.exist;
-			expect(player.isReady).to.be.false;
-			expect(player.hasAnswered).to.be.false;
-			expect(player.hasFinished).to.be.false;
-			expect(player.isConnected).to.be.true;
-
-			done();
-		}.bind(this));
-
-		this.wss.on('connection', socket => {
-			socket.send(JSON.stringify(msgWelcomePrep));
-			
-			socket.send(JSON.stringify({
-				type: 'playerJoined',
-				nickname: 'nick3', 
-				description: 'nick3 has joined',
-				isReconnect: false,
-			}));
-		});
-		loadWebSocket(this.vm);
-	});
-
-	it("responds correctly to a 'playerJoined' message when reconnecting",
-			function(done) {
-		this.vm.$bus.on('bus-player-joined', function() {
-			var game = JSON.parse(JSON.stringify(this.vm.$store.state.game));
-
-			var player = game.players.find(x => x.nickname === 'nick1');
-			expect(player).to.exist;
-			expect(player.isConnected).to.be.true;
-
-			done();
-		}.bind(this));
-
-		this.wss.on('connection', socket => {
-			var msgWelcomePrepWDisc = JSON.parse(JSON.stringify(
-				msgWelcomePrep));
-			var player = msgWelcomePrepWDisc.players.find(
-				x => x.nickname === 'nick1');
-			player.isConnected = false;
-			socket.send(JSON.stringify(msgWelcomePrepWDisc));
-			
-			socket.send(JSON.stringify({
-				type: 'playerJoined',
-				nickname: 'nick1', 
-				description: 'nick1 has reconnected',
-				isReconnect: true,
-			}));
-		});
-		loadWebSocket(this.vm);
-	});
-
-	it("responds correctly to a 'playerLeft' message when not "
-			+ "reconnecting", function(done) {
-		this.vm.$bus.on('bus-player-left', function() {
-			var game = JSON.parse(JSON.stringify(this.vm.$store.state.game));
-
-			var player = game.players.find(x => x.nickname === 'nick1');
-			expect(player).to.be.undefined;
-
-			done();
-		}.bind(this));
-
-		this.wss.on('connection', socket => {
-			socket.send(JSON.stringify(msgWelcomePrep));
-			
-			socket.send(JSON.stringify({
-				type: 'playerLeft',
-				nickname: 'nick1', 
-				description: 'nick1 has left',
-				isDisconnect: false,
-			}));
-		});
-		loadWebSocket(this.vm);
-	});
-
-	it("responds correctly to a 'playerLeft' message when reconnecting",
-			function(done) {
-		this.vm.$bus.on('bus-player-left', function() {
-			var game = JSON.parse(JSON.stringify(this.vm.$store.state.game));
-
-			var player = game.players.find(x => x.nickname === 'nick1');
-			expect(player).to.exist;
-			expect(player.isConnected).to.be.false;
-
-			done();
-		}.bind(this));
-
-		this.wss.on('connection', socket => {
-			socket.send(JSON.stringify(msgWelcomePrep));
-			
-			socket.send(JSON.stringify({
-				type: 'playerLeft',
-				nickname: 'nick1', 
-				description: 'nick1 has disconnected',
-				isDisconnect: true,
-			}));
-		});
-		loadWebSocket(this.vm);
-	});
-
-	it("responds correctly to a 'playerReady' message", function(done) {
-		this.vm.$bus.on('bus-player-ready', function() {
-			var game = JSON.parse(JSON.stringify(this.vm.$store.state.game));
-
-			var player = game.players.find(x => x.nickname === 'nick1');
-			expect(player.isReady).to.be.true;
-
-			done();
-		}.bind(this));
-
-		this.wss.on('connection', socket => {
-			socket.send(JSON.stringify(msgWelcomePrep));
-			
-			socket.send(JSON.stringify({
-				type: 'playerReady',
-				nickname: 'nick1', 
-			}));
-		});
-		loadWebSocket(this.vm);
-	});
-
-	it("responds correctly to a 'playerNotReady' message",
-			function(done) {
-		this.vm.$bus.on('bus-player-not-ready', function() {
-			var game = JSON.parse(JSON.stringify(this.vm.$store.state.game));
-
-			var player = game.players.find(x => x.nickname === 'nick1');
-			expect(player.isReady).to.be.false;
-
-			done();
-		}.bind(this));
-
-		this.wss.on('connection', socket => {
-			var msgWelcomePrepReady = JSON.parse(JSON.stringify(
-				msgWelcomePrep));
-			var player = msgWelcomePrepReady.players.find(
-				x => x.nickname === 'nick1');
-			player.isReady = true;
-			socket.send(JSON.stringify(msgWelcomePrep));
-			
-			socket.send(JSON.stringify({
-				type: 'playerNotReady',
-				nickname: 'nick1', 
-			}));
-		});
-		loadWebSocket(this.vm);
-	
-	});
-
-	it("responds correctly to a 'qinstStartCountdown' message",
-			function(done) {
-		this.vm.$bus.on('bus-qinst-start-countdown', function() {
-			var game = JSON.parse(JSON.stringify(this.vm.$store.state.game));
 		
-			expect(game.phase).to.equal('ready');
-
-			done();
-		}.bind(this))
-
-		this.wss.on('connection', socket => {
-			socket.send(JSON.stringify(msgWelcomePrep));
-
-			socket.send(JSON.stringify({
-				type: 'qinstStartCountdown',
-			}));
-		});
-		loadWebSocket(this.vm);
+		testVisitGame.bind(this)(done, true, 'code');
 	});
 
-	it.only("responds correctly to a qinstCancelCountdown message",
+	it("does not load the game screen when the code has > 10 digits",
 			function(done) {
-		this.vm.$bus.on('bus-qinst-cancel-countdown', function() {
-			var game = JSON.parse(JSON.stringify(this.vm.$store.state.game));
-		
-			expect(game.phase).to.equal('prep');
-
-			done();
-		}.bind(this))
-
-		this.wss.on('connection', socket => {
-			socket.send(JSON.stringify(msgWelcomePrep));
-
-			socket.send(JSON.stringify({
-				type: 'qinstStartCountdown',
-			}));
-
-			socket.send(JSON.stringify({
-				type: 'qinstCancelCountdown',
-			}));
+		this.wrapper.setData({
+			qinstCode: 1234567890123,
+			qinstNickname: "nick1",
 		});
-		loadWebSocket(this.vm);
+		
+		testVisitGame.bind(this)(done, true, 'code');
 	});
 
-	//[TODO] account for games with different settings, e.g. where
-	// doesAdvanceTogether is set to false
+	it("does not load the game screen when no code is specified",
+			function(done) {
+		this.wrapper.setData({
+			qinstCode: null,
+			qinstNickname: "nick1",
+		});
+
+		testVisitGame.bind(this)(done, true, 'code');
+	});
+
+	it("does not load the game screen when the nickname is invalid",
+			function(done) {
+		this.wrapper.setData({
+			qinstCode: 1234567890,
+			qinstNickname: "",
+		});
+		
+		testVisitGame.bind(this)(done, true, 'nickname');
+	});
+
 
 
 });

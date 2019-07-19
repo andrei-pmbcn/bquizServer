@@ -26,6 +26,7 @@
 		<menu-screen
 			v-if="screen === SCREEN_MENU"
 			@visit-creation="visitCreation"
+			@visit-list="visitList"
 			@visit-game="visitGame"
 		></menu-screen>
 		<list-screen
@@ -34,7 +35,7 @@
 		></list-screen>
 		<quiz-screen
 			v-if="screen === SCREEN_QUIZ"
-			@visit-list="visitList"
+			@visit-menu="visitMenu"
 		></quiz-screen>
 		<game-screen
 			v-if="screen === SCREEN_GAME"
@@ -53,11 +54,9 @@
 //play quiz
 //browse & edit own quizzes
 
-//axios
-
-import 'bootstrap/dist/css/bootstrap.min.css';
 import $ from 'jquery/dist/jquery.slim.min.js';
-//import 'bootstrap/dist/js/bootstrap.min.js';
+import 'bootstrap/dist/css/bootstrap.min.css';
+import 'bootstrap/dist/js/bootstrap.bundle.min.js';
 
 import { mapState, mapMutations } from 'vuex';
 
@@ -97,15 +96,16 @@ function handleWelcome(msg) {
 
 function handleError(msg) {
 	this.wsErrorMessages.push(msg);
+	console.log($('#modal-error')[0]);
 	if (this.wsErrorMessages.length > 0) {
-		//$('#modal-error').modal('show'); //[TODO]
+		$('#modal-error').modal('show'); //[TODO]
 	}
 }
 
 function clearError() {
 	this.wsErrorMessages.shift();
 	if (this.wsErrorMessages.length === 0) {
-		//$('#modal-error').modal('hide'); //[TODO]
+		$('#modal-error').modal('hide'); //[TODO]
 	}
 }
 
@@ -156,15 +156,15 @@ export default {
 		'admin-screen': AdminScreen,
 	},
 	created() {
-		this.$bus.on('bus-ws-error', handleError);
-		this.$bus.on('bus-error', handleError);
-		this.$bus.on('bus-welcome', handleWelcome);
+		this.$bus.on('bus-ws-error', handleError.bind(this));
+		this.$bus.on('bus-error', handleError.bind(this));
+		this.$bus.on('bus-welcome', handleWelcome.bind(this));
 	},
 
 	beforeDestroy() {
-		this.$bus.off('bus-ws-error', handleError);
-		this.$bus.off('bus-error', handleError);
-		this.$bus.off('bus-welcome', handleWelcome);
+		this.$bus.off('bus-ws-error', handleError.bind(this));
+		this.$bus.off('bus-error', handleError.bind(this));
+		this.$bus.off('bus-welcome', handleWelcome.bind(this));
 	},
 }
 

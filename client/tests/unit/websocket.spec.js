@@ -1,18 +1,16 @@
 import { expect } from 'chai';
-import sinon from 'sinon';
+//import sinon from 'sinon';
 import Vuex from 'vuex';
 import Bus from 'vue-bus';
-//import MockBrowser from 'mock-browser';
 import { Server } from 'mock-socket';
 import { mount, createLocalVue } from '@vue/test-utils';
 
 import App from '@/App.vue';
 import store from '@/store.js';
-import { setupUser } from '@/api.js';
 import config from '@/config.js';
 import loadWebSocket from '@/websocket.js';
 
-describe.only("websocket messages", function() {
+describe("websocket messages", function() {
 	var msgWelcomeCommon = {
 		type: 'welcome',
 		players: [
@@ -596,7 +594,7 @@ describe.only("websocket messages", function() {
 		loadWebSocket(this.vm);
 	});
 
-	it.only("responds correctly to a qinstEnd message", function(done) {
+	it("responds correctly to a qinstEnd message", function(done) {
 		var results = [
 			{
 				nickname: 'nick2',
@@ -628,6 +626,7 @@ describe.only("websocket messages", function() {
 		loadWebSocket(this.vm);
 	});
 
+	it("responds correctly to a connectionClosed message");
 
 	//[TODO] account for games with different settings, e.g. where
 	// doesAdvanceTogether is set to false

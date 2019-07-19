@@ -27,6 +27,120 @@ async function verifyUser(username, password) {
 	return result ? true : false;
 }
 
+function dbNameToCcName(str) {
+	var pattern = str.match(/_[a-z]/g);
+	for (match of pattern) {
+		str = str.replace(match, match[1].toUpperCase());
+	}
+	return str;
+}
+
+function ccNameToDbName(str) {
+	var pattern = str.match(/[A-Z]/g);
+	for (match of pattern) {
+		str = str.replace(match, "_" + match.toLowerCase());
+	}
+	return str;
+}
+
+async function saveQuiz(quiz) {
+	// Ensure that all quiz names are unique to a given user
+	console.log(quiz.user);
+	var user = await knex('user')
+		.first('id', 'username', 'password')
+		.where({username: quiz.user.name, password: quiz.user.pass});
+
+	var sameNames = await knex('bible_quiz')
+		.count({hits: 'id'})
+		.where({name: quiz.name, user_id: user.id})
+		.andWhereNot({id: quiz.id});
+	console.log('sameNames[0]:', sameNames[0]);
+	if (sameNames[0].hits) {
+		throw new Error("InvalidQuizName: the name of the quiz to be saved "
+			+ "is identical to another quiz's name");
+	};
+	
+	//var testQuiz = await knex('bible_quiz')
+	//	.first('id')
+	//	.where({id: 10000000000});
+	//console.log('testQuiz:', testQuiz); //undefined
+	
+	// If the quiz id is null, treat the quiz as a new quiz
+	if (quiz.id === null) {
+		// identify the owner of the quiz
+		var user_id = await knex('user')
+			.first('id')
+			.where({username: quiz.user.name, password: quiz.user.pass});
+
+		// save the quiz details
+		var quiz_id = await knex('bible_quiz')
+			.insert({
+				name: quiz.name,
+				description: quiz.description,
+				user_id: user_id,
+				time: quiz.time,
+				is_time_per_question: quiz.isTimePerQuestion,
+				does_advance_together: quiz.doesAdvanceTogether,
+				does_host_play: quiz.doesHostPlay,
+			}, ['id'])
+
+		// save the quiz sections
+		for (section of quiz.contents) {
+			await knex('bible_quiz_section')
+				.insert({
+					bible_quiz_id: quiz_id,
+					book: section.book,
+					chapter: section.chapter,
+					verset: section.verset,
+					n_questions: section.nQuestions,
+				})
+		}
+	} else {
+		// otherwise check that the quiz exists and make the necessary changes
+		// to it.
+		var quiz_id = quiz.id;
+		var oldQuiz = await knex('bible_quiz')
+			.first('id', 'name', 'description', 'time',
+				'is_time_per_question', 'does_advance_together',
+				'does_host_play')
+			.where({id: quiz.id});
+
+		if (!oldQuiz) {
+			throw new Error("InvalidQuizId: no quiz with the specified id "
+				+ "can be found in the database");
+		}
+
+		var updates = {};
+		for (attr of Object.keys(oldQuiz)) {
+			var ccAttr = dbNameToCcName(attr)
+			if (!["id"].includes(attr)
+				&& oldQuiz[attr] !== quiz[ccAttr] ) {
+					updates[attr] = quiz[ccAttr]
+			}
+		}
+
+		await knex('bible_quiz')
+			.update(updates)
+			.where({id: oldQuiz.id});
+
+		var sections = knex('bible_quiz_section')
+			.select('book', 'chapter', 'verset', 'n_questions')
+			.where({bible_quiz_id: oldQuiz.id});
+
+		console.log(sections);
+
+		for (newSection of quiz.contents) {
+			
+		}
+
+		// add sections that are missing from the database
+
+
+	}
+
+	return quiz_id;
+}
+
 async function fetchQuiz(quizIdentifier) {
 	var dbQuiz = await knex('bible_quiz')
 		.first('id', 'name', 'description', 'time', 'is_time_per_question')
@@ -136,6 +250,7 @@ async function fetchCommentary(dbQuestion) {
 
 module.exports = {
 	verifyUser,
+	saveQuiz,
 	fetchQuiz,
 
 }
